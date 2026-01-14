@@ -42,8 +42,8 @@ def verificar_status_e_limpar(sheet_p, dados_p):
     hora_atual, dia_semana = agora.time(), agora.weekday()
 
     if hora_atual >= time(18, 50): marco = agora.replace(hour=18, minute=50, second=0, microsecond=0)
-    elif hora_atual >= time(6, 50): marco = agora.replace(hour=6, minute=50, second=0, microsecond=0)
-    else: marco = (agora - timedelta(days=1)).replace(hour=18, minute=50, second=0, microsecond=0)
+    elif hora_atual >= time(13, 50): marco = agora.replace(hour=13, minute=50, second=0, microsecond=0)
+    else: marco = (agora - timedelta(days=1)).replace(hour=13, minute=50, second=0, microsecond=0)
 
     if dados_p and len(dados_p) > 1:
         try:
