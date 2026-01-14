@@ -4,11 +4,9 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime, time
 import pytz
-import smtplib
-from email.mime.text import MIMEText
 from fpdf import FPDF
 
-# --- ACESSO E CONEXÃO ---
+# --- CONFIGURAÇÃO DE ACESSO ---
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
 def conectar():
@@ -17,27 +15,6 @@ def conectar():
     client = gspread.authorize(creds)
     return client.open("ListaPresenca")
 
-def enviar_email_recuperacao(destinatario, usuario, senha):
-    try:
-        remetente = st.secrets["email_user"]
-        # Remove qualquer espaço que possa ter vindo da colagem
-        senha_app = st.secrets["email_password"].replace(" ", "")
-        
-        corpo = f"Olá,\n\nSeus dados de acesso à Rota Nova Iguaçu são:\n\nUsuário: {usuario}\nSenha: {senha}"
-        msg = MIMEText(corpo)
-        msg['Subject'] = 'Recuperação de Acesso - Rota Nova Iguaçu'
-        msg['From'] = remetente
-        msg['To'] = destinatario
-        
-        # Conexão SSL direta na porta 465 (mais segura e estável)
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(remetente, senha_app)
-            server.send_message(msg)
-        return True
-    except Exception as e:
-        return False
-
-# --- LOGICA DE STATUS E HORÁRIOS ---
 def verificar_status():
     fuso_br = pytz.timezone('America/Sao_Paulo')
     agora = datetime.now(fuso_br)
@@ -84,6 +61,7 @@ try:
                 u_a = next((u for u in users if str(u['Nome']).strip() == l_n.strip() and str(u['Senha']).strip() == str(l_s).strip()), None)
                 if u_a: st.session_state.usuario_logado = u_a; st.rerun()
                 else: st.error("Usuário ou senha inválidos.")
+        
         with t2:
             with st.form("cad"):
                 n_n, n_e = st.text_input("Nome de Escala:"), st.text_input("E-mail:")
@@ -92,16 +70,20 @@ try:
                 n_s = st.text_input("Crie uma Senha:", type="password")
                 if st.form_submit_button("Cadastrar"):
                     sheet_u.append_row([n_n, n_g, n_u, n_s, n_d, n_e]); st.success("Cadastrado! Faça Login.")
+        
         with t3:
-            e_r = st.text_input("Digite o e-mail cadastrado para recuperar:")
-            if st.button("Recuperar Dados"):
+            st.write("Valide seu e-mail para visualizar seus dados de acesso.")
+            e_r = st.text_input("Digite o e-mail cadastrado:")
+            if st.button("Visualizar Meus Dados"):
                 users = sheet_u.get_all_records()
                 u_r = next((u for u in users if str(u.get('Email', '')).strip().lower() == e_r.strip().lower()), None)
                 if u_r:
-                    if enviar_email_recuperacao(e_r, u_r.get('Nome'), u_r.get('Senha')):
-                        st.success(f"Dados enviados com sucesso para {e_r}!")
-                    else: st.error("Erro técnico ao enviar o e-mail. Verifique os Secrets.")
-                else: st.error("E-mail não encontrado na nossa base de usuários.")
+                    st.success(f"Usuário encontrado!")
+                    st.info(f"**Seu Usuário:** {u_r['Nome']}")
+                    st.info(f"**Sua Senha:** {u_r['Senha']}")
+                    st.warning("Anote seus dados e não os compartilhe.")
+                else: st.error("E-mail não encontrado.")
+
     else:
         user = st.session_state.usuario_logado
         st.sidebar.info(f"Logado: {user['Graduação']} {user['Nome']}")
@@ -126,7 +108,9 @@ try:
 
         if len(dados_p) > 1:
             df = aplicar_ordenacao_e_numeracao(pd.DataFrame(dados_p[1:], columns=dados_p[0]))
-            st.subheader(f"Pessoas Presentes ({len(df)})"); st.table(df)
+            st.subheader(f"Pessoas Presentes ({len(df)})")
+            # Exibe a tabela sem barra de rolagem
+            st.table(df)
             if ja and st.button("❌ EXCLUIR MINHA ASSINATURA"):
                 for idx, r in enumerate(dados_p):
                     if r[3] == user['Nome']: sheet_p.delete_rows(idx + 1); st.rerun()
