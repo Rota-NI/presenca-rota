@@ -17,7 +17,6 @@ def conectar_gsheets():
     return gspread.authorize(creds)
 
 def buscar_dados_sem_cache():
-    # Para funções críticas (trava de duplicidade), buscamos sem cache
     client = conectar_gsheets()
     doc = client.open("ListaPresenca")
     sheet_p = doc.sheet1
@@ -46,7 +45,11 @@ def verificar_status_e_limpar(sheet_p, dados_p):
            (dia_semana == 4 and time(7, 0) <= hora_atual <= time(17, 0))
 
 def aplicar_ordenacao(df):
-    # Garante que todas as colunas necessárias existam
+    # 1. Remove linhas totalmente vazias ou sem nome/email (limpa "posições fantasmas")
+    df = df.dropna(subset=['NOME', 'EMAIL'], how='any')
+    df = df[df['NOME'].str.strip() != ""]
+
+    # 2. Garante colunas necessárias
     cols_ref = ['DATA_HORA', 'QG_RMCF_OUTROS', 'GRADUAÇÃO', 'NOME', 'LOTAÇÃO', 'EMAIL']
     for c in cols_ref:
         if c not in df.columns: df[c] = "N/A"
@@ -55,12 +58,16 @@ def aplicar_ordenacao(df):
     p_grad = {"TCEL": 1, "MAJ": 2, "CAP": 3, "1º TEN": 4, "2º TEN": 5, "SUBTEN": 6, 
               "1º SGT": 7, "2º SGT": 8, "3º SGT": 9, "CB": 10, "SD": 11, "FC COM": 101, "FC TER": 102}
     
+    # 3. Cria critérios de ordenação
     df['is_fc'] = df['GRADUAÇÃO'].apply(lambda x: 1 if "FC" in str(x) else 0)
     df['p_o'] = df['QG_RMCF_OUTROS'].map(p_orig).fillna(99)
     df['p_g'] = df['GRADUAÇÃO'].map(p_grad).fillna(999)
     df['dt'] = pd.to_datetime(df['DATA_HORA'], dayfirst=True, errors='coerce')
     
+    # 4. Ordena e Reseta o índice para a numeração ficar correta
     df = df.sort_values(by=['is_fc', 'p_o', 'p_g', 'dt']).reset_index(drop=True)
+    
+    # 5. Gera a coluna Nº baseada na nova ordem real
     df.insert(0, 'Nº', [str(i+1) if i < 38 else f"Exc-{i-37:02d}" for i in range(len(df))])
     
     df_v = df.copy()
@@ -123,28 +130,29 @@ try:
         ja, pos = False, 999
         
         if len(dados_p) > 1:
-            df_o, df_v = aplicar_ordenacao(pd.DataFrame(dados_p[1:], columns=dados_p[0]))
-            # TRAVA DE SEGURANÇA: Verificação rigorosa de e-mail na lista
-            lista_emails = [str(r[5]).strip().lower() for r in dados_p[1:] if len(r) >= 6]
+            # Converte para DataFrame usando a primeira linha como cabeçalho
+            df_bruto = pd.DataFrame(dados_p[1:], columns=dados_p[0])
+            df_o, df_v = aplicar_ordenacao(df_bruto)
+            
+            lista_emails = [str(e).strip().lower() for e in df_o['EMAIL'].tolist()]
             ja = str(u.get('Email')).strip().lower() in lista_emails
             
             if ja:
-                try: pos = df_o.index[df_o['EMAIL'].str.lower() == u.get('Email').lower()].tolist()[0] + 1
+                try: 
+                    # Busca a posição real na tabela ordenada
+                    pos = df_o.index[df_o['EMAIL'].str.lower() == u.get('Email').lower()].tolist()[0] + 1
                 except: pass
 
         if aberto:
             if not ja:
-                # SÓ MOSTRA SE NÃO ESTIVER NA LISTA
                 orig = u.get('ORIGEM') or u.get('QG_RMCF_OUTROS') or "QG"
                 if st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True):
                     agora = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
                     sheet_p.append_row([agora, orig, u.get('Graduação'), u.get('Nome'), u.get('Lotação'), u.get('Email')])
                     st.rerun()
             else:
-                # SE JÁ ESTIVER NA LISTA, MOSTRA EXCLUIR
                 st.warning(f"✅ Presença registrada. Posição: {pos}º")
                 if st.button("❌ EXCLUIR MINHA ASSINATURA", use_container_width=True):
-                    # Encontra a linha exata pelo e-mail para excluir
                     for idx, r in enumerate(dados_p):
                         if len(r) >= 6 and str(r[5]).strip().lower() == str(u.get('Email')).lower():
                             sheet_p.delete_rows(idx + 1)
@@ -157,7 +165,6 @@ try:
                 st.session_state.conf_ativa = not st.session_state.conf_ativa
             if st.session_state.conf_ativa:
                 for i, row in df_o.iterrows():
-                    # CHAVE ÚNICA ABSOLUTA: Índice + Email
                     st.checkbox(f"{row['Nº']} - {row.get('GRADUAÇÃO')} {row.get('NOME')}", key=f"chk_{i}_{row.get('EMAIL')}")
 
         if len(dados_p) > 1:
