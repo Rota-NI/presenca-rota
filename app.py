@@ -20,15 +20,28 @@ def verificar_status():
     fuso_br = pytz.timezone('America/Sao_Paulo')
     agora = datetime.now(fuso_br)
     dia_semana, hora_atual = agora.weekday(), agora.time()
+    
+    # Limpeza automática (06:50 e 18:50)
     deve_limpar = (time(6, 50) <= hora_atual <= time(6, 59)) or (time(18, 50) <= hora_atual <= time(18, 59))
     
     aberto = False
-    if dia_semana == 6 and hora_atual >= time(19, 0): aberto = True 
-    elif dia_semana in [0, 1, 2, 3]: 
-        if hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(17, 0) or hora_atual >= time(19, 0): aberto = True
-    elif dia_semana == 4: 
-        if hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(17, 0): aberto = True
-    elif dia_semana == 5 and hora_atual <= time(5, 0): aberto = True 
+    
+    # DOMINGO: Só abre às 19:00
+    if dia_semana == 6:
+        if hora_atual >= time(19, 0):
+            aberto = True
+            
+    # SEGUNDA A QUINTA: Madrugada (até 05h), Dia (07h às 17h) e Noite (após 19h)
+    elif dia_semana in [0, 1, 2, 3]:
+        if hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(17, 0) or hora_atual >= time(19, 0):
+            aberto = True
+            
+    # SEXTA: APENAS das 07:00 às 17:00 (conforme sua ressalva)
+    elif dia_semana == 4:
+        if time(7, 0) <= hora_atual <= time(17, 0):
+            aberto = True
+            
+    # SÁBADO: FECHADO o dia todo (nenhuma regra de abertura)
     
     return aberto, deve_limpar
 
@@ -56,41 +69,24 @@ def aplicar_ordenacao_e_numeracao(df):
 # --- INTERFACE ---
 st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered")
 
-# CSS para tornar o Título e a Tabela responsivos
+# CSS para Título e Tabela responsivos
 st.markdown("""
     <style>
-    /* Estilo para o Título Responsivo */
-    .titulo-container {
-        text-align: center;
-        width: 100%;
-    }
+    .titulo-container { text-align: center; width: 100%; }
     .titulo-responsivo {
-        font-size: clamp(1.5rem, 5vw, 2.5rem); /* Ajusta entre 1.5rem e 2.5rem conforme a tela */
+        font-size: clamp(1.5rem, 5vw, 2.5rem);
         font-weight: bold;
         margin-bottom: 20px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
     }
-    
-    /* Estilo para a Tabela Responsiva */
-    .tabela-responsiva {
-        width: 100%;
-        overflow-x: auto;
-        display: block;
-    }
-    table {
-        width: 100% !important;
-        font-size: 12px;
-    }
-    th, td {
-        white-space: nowrap;
-        padding: 5px !important;
-    }
+    .tabela-responsiva { width: 100%; overflow-x: auto; display: block; }
+    table { width: 100% !important; font-size: 12px; }
+    th, td { white-space: nowrap; padding: 5px !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# Aplicação do Título Adaptável
 st.markdown("""
     <div class="titulo-container">
         <div class="titulo-responsivo">🚌 ROTA NOVA IGUAÇU</div>
@@ -156,12 +152,13 @@ try:
                     st.success("Presença registrada!"); st.rerun()
             else: 
                 st.warning("✅ Presença registrada.")
+        else:
+            st.info("⌛ A lista de presença encontra-se fechada no momento.")
         
         if len(dados_p) > 1:
             df = aplicar_ordenacao_e_numeracao(pd.DataFrame(dados_p[1:], columns=dados_p[0]))
             st.subheader(f"Pessoas Presentes ({len(df)})")
             
-            # Tabela responsiva
             html_tabela = f'<div class="tabela-responsiva">{df.to_html(index=False, justify="center", border=0)}</div>'
             st.write(html_tabela, unsafe_allow_html=True)
             
