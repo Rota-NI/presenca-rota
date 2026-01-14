@@ -80,24 +80,32 @@ def aplicar_ordenacao_e_numeracao(df):
     df['p_grad'] = df['GRADUAÇÃO'].map(peso_grad).fillna(999)
     df['dt_temp'] = pd.to_datetime(df['DATA_HORA'], dayfirst=True)
     df = df.sort_values(by=['is_fc', 'p_orig', 'p_grad', 'dt_temp']).reset_index(drop=True)
+    
+    # Gerar numeração
     df.insert(0, 'Nº', [str(i+1) if i < 38 else f"Exc-{i-37:02d}" for i in range(len(df))])
-    return df.drop(columns=['is_fc', 'p_orig', 'p_grad', 'dt_temp'])
+    
+    # Criar uma cópia para exibição com formatação HTML
+    df_html = df.copy()
+    for i, row in df_html.iterrows():
+        if "Exc-" in str(row['Nº']):
+            # Aplica negrito e cor vermelha via HTML nas células da linha excedente
+            for col in df_html.columns:
+                df_html.at[i, col] = f"<span style='color: #d32f2f; font-weight: bold;'>{row[col]}</span>"
+    
+    return df.drop(columns=['is_fc', 'p_orig', 'p_grad', 'dt_temp']), df_html.drop(columns=['is_fc', 'p_orig', 'p_grad', 'dt_temp'])
 
 # --- INTERFACE ---
 st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered")
 
-# Estilos CSS incluindo negrito para EXC- e Assinatura
 st.markdown("""
     <style>
     .titulo-container { text-align: center; width: 100%; }
     .titulo-responsivo { font-size: clamp(1.2rem, 5vw, 2.2rem); font-weight: bold; margin-bottom: 20px; }
     .stCheckbox { background-color: #f8f9fa; padding: 5px; border-radius: 4px; margin-bottom: 2px; border: 1px solid #eee; }
     .tabela-responsiva { width: 100%; overflow-x: auto; display: block; }
-    table { width: 100% !important; font-size: 12px; }
-    th, td { white-space: nowrap; padding: 5px !important; }
-    /* Negrito para linhas Excedentes */
-    tr:has(td:first-child:contains("Exc-")) { font-weight: bold; color: #d32f2f; }
-    .footer { text-align: center; font-size: 10px; color: grey; margin-top: 50px; }
+    table { width: 100% !important; font-size: 11px; }
+    th, td { white-space: nowrap; padding: 4px !important; }
+    .footer { text-align: center; font-size: 11px; color: #888; margin-top: 40px; padding: 20px; border-top: 1px solid #eee; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -111,7 +119,7 @@ if 'conferencia_ativa' not in st.session_state:
 try:
     dados_p, records_u = buscar_dados_planilha()
     if dados_p is None:
-        st.warning("⚠️ Sincronizando dados... Aguarde.")
+        st.warning("⚠️ Sincronizando dados...")
         st.stop()
 
     doc_escrita = conectar_escrita()
@@ -130,27 +138,27 @@ try:
                         st.session_state.usuario_logado = u_a
                         st.rerun()
                     else: st.error("Usuário ou senha inválidos.")
-        # ... abas t2 e t3 seguem a mesma lógica anterior ...
     else:
         user = st.session_state.usuario_logado
         st.sidebar.info(f"Conectado: {user['Graduação']} {user['Nome']}")
         st.sidebar.markdown("---")
         st.sidebar.caption("Desenvolvido por:")
-        st.sidebar.write("**MAJ ANDRÉ AGUIAR - CAES**") # Assinatura na Sidebar
+        st.sidebar.write("**MAJ ANDRÉ AGUIAR - CAES**") 
         
         if st.sidebar.button("Sair"): 
             st.session_state.usuario_logado = None
             st.rerun()
         
         aberto = verificar_status_e_limpar(sheet_p_escrita, dados_p)
-        df = pd.DataFrame()
+        df_original = pd.DataFrame()
+        df_visual = pd.DataFrame()
         ja, posicao_usuario = False, 999
         
         if len(dados_p) > 1:
-            df = aplicar_ordenacao_e_numeracao(pd.DataFrame(dados_p[1:], columns=dados_p[0]))
+            df_original, df_visual = aplicar_ordenacao_e_numeracao(pd.DataFrame(dados_p[1:], columns=dados_p[0]))
             ja = any(user['Nome'] == r[3] for r in dados_p[1:])
             if ja:
-                try: posicao_usuario = df.index[df['NOME'] == user['Nome']].tolist()[0] + 1
+                try: posicao_usuario = df_original.index[df_original['NOME'] == user['Nome']].tolist()[0] + 1
                 except: pass
 
         if aberto:
@@ -171,20 +179,20 @@ try:
                 st.session_state.conferencia_ativa = not st.session_state.conferencia_ativa
             
             if st.session_state.conferencia_ativa:
-                for i, row in df.iterrows():
+                for i, row in df_original.iterrows():
                     key_p = f"presenca_{i}_{row['NOME']}"
                     if key_p not in st.session_state: st.session_state[key_p] = False
                     st.checkbox(f"{row['Nº']} - {row['GRADUAÇÃO']} {row['NOME']}", key=key_p)
             st.divider()
 
         if len(dados_p) > 1:
-            st.subheader(f"Presentes ({len(df)})")
+            st.subheader(f"Presentes ({len(df_original)})")
             if st.button("🔄 ATUALIZAR LISTA", use_container_width=True): 
                 st.cache_data.clear()
                 st.rerun()
             
-            # Tabela com destaque para excedentes
-            html_tab = f'<div class="tabela-responsiva">{df.to_html(index=False, justify="center", border=0)}</div>'
+            # Exibição da tabela usando a versão formatada (df_visual) com escape=False
+            html_tab = f'<div class="tabela-responsiva">{df_visual.to_html(index=False, justify="center", border=0, escape=False)}</div>'
             st.write(html_tab, unsafe_allow_html=True)
             
             col_pdf, col_wpp = st.columns(2)
@@ -197,14 +205,14 @@ try:
                 headers = ["Nº", "DATA_HORA", "ORIGEM", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
                 for i, h in enumerate(headers): pdf.cell(w[i], 8, h, border=1, align="C")
                 pdf.ln(); pdf.set_font("Arial", "", 8)
-                for _, r in df.iterrows():
+                for _, r in df_original.iterrows():
                     for i in range(len(headers)): pdf.cell(w[i], 8, str(r[i]), border=1)
                     pdf.ln()
                 st.download_button("📄 PDF", pdf.output(dest="S").encode("latin-1"), "lista.pdf", "application/pdf", use_container_width=True)
             
             with col_wpp:
                 texto_wpp = f"*🚌 LISTA DE PRESENÇA*\n\n"
-                for _, r in df.iterrows(): texto_wpp += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']}\n"
+                for _, r in df_original.iterrows(): texto_wpp += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']}\n"
                 st.markdown(f'<a href="https://wa.me/?text={urllib.parse.quote(texto_wpp)}" target="_blank"><button style="width:100%; height:38px; background-color:#25D366; color:white; border:none; border-radius:4px; font-weight:bold;">🟢 WHATSAPP</button></a>', unsafe_allow_html=True)
 
             if ja and st.button("❌ EXCLUIR MINHA ASSINATURA", use_container_width=True):
@@ -213,7 +221,7 @@ try:
                         sheet_p_escrita.delete_rows(idx + 1)
                         st.cache_data.clear(); st.rerun()
 
-    st.markdown('<div class="footer">Desenvolvido por: MAJ ANDRÉ AGUIAR - CAES</div>', unsafe_allow_html=True)
+    st.markdown('<div class="footer">Desenvolvido por: <b>MAJ ANDRÉ AGUIAR - CAES</b></div>', unsafe_allow_html=True)
 
 except Exception as e:
-    st.error(f"Erro de conexão. Aguarde. Detalhe: {e}")
+    st.error(f"Erro de conexão. Detalhe: {e}")
