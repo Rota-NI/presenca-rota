@@ -12,34 +12,32 @@ from fpdf import FPDF
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
 def conectar():
-    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
+    info = st.secrets["gcp_service_account"]
+    creds = Credentials.from_service_account_info(info, scopes=scope)
     client = gspread.authorize(creds)
     return client.open("ListaPresenca")
 
 def enviar_email_recuperacao(destinatario, usuario, senha):
     try:
-        # Puxa os dados salvos nos Secrets do Streamlit
         remetente = st.secrets["email_user"]
-        senha_app = st.secrets["email_password"]
+        # Remove qualquer espaço que possa ter vindo da colagem
+        senha_app = st.secrets["email_password"].replace(" ", "")
         
-        corpo = f"Olá,\n\nSeus dados de acesso à Rota Nova Iguaçu são:\n\nUsuário: {usuario}\nSenha: {senha}\n\nUtilize estes dados para realizar o seu login."
+        corpo = f"Olá,\n\nSeus dados de acesso à Rota Nova Iguaçu são:\n\nUsuário: {usuario}\nSenha: {senha}"
         msg = MIMEText(corpo)
         msg['Subject'] = 'Recuperação de Acesso - Rota Nova Iguaçu'
         msg['From'] = remetente
         msg['To'] = destinatario
         
-        # Conexão segura com o servidor do Gmail
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls() # Inicia criptografia
-        server.login(remetente, senha_app)
-        server.send_message(msg)
-        server.quit()
+        # Conexão SSL direta na porta 465 (mais segura e estável)
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(remetente, senha_app)
+            server.send_message(msg)
         return True
     except Exception as e:
-        # Mostra o erro real apenas para o administrador nos logs se necessário
         return False
 
-# --- LOGICA DE STATUS E ORDENAÇÃO (Mantida conforme solicitado anteriormente) ---
+# --- LOGICA DE STATUS E HORÁRIOS ---
 def verificar_status():
     fuso_br = pytz.timezone('America/Sao_Paulo')
     agora = datetime.now(fuso_br)
@@ -58,7 +56,6 @@ def aplicar_ordenacao_e_numeracao(df):
     peso_destino = {"QG": 1, "RMCF": 2, "OUTROS": 3}
     peso_grad = {"TCEL": 1, "MAJ": 2, "CAP": 3, "1º TEN": 4, "2º TEN": 5, "SUBTEN": 6, "1º SGT": 7, "2º SGT": 8, "3º SGT": 9, "CB": 10, "SD": 11, "FC COM": 101, "FC TER": 102}
     df['is_fc'] = df['GRADUAÇÃO'].apply(lambda x: 1 if "FC" in str(x) else 0)
-    # Busca flexível pela coluna de destino
     col_dest = "QG_RMCF_OUTROS" if "QG_RMCF_OUTROS" in df.columns else "QG_RMCF_OUT"
     df['p_dest'] = df.apply(lambda r: peso_destino.get(r[col_dest], 99) if r['is_fc'] == 0 else 99, axis=1)
     df['p_grad'] = df['GRADUAÇÃO'].map(peso_grad).fillna(999)
@@ -106,7 +103,6 @@ try:
                     else: st.error("Erro técnico ao enviar o e-mail. Verifique os Secrets.")
                 else: st.error("E-mail não encontrado na nossa base de usuários.")
     else:
-        # Interface do Usuário Logado (Mantida Conforme as regras anteriores)
         user = st.session_state.usuario_logado
         st.sidebar.info(f"Logado: {user['Graduação']} {user['Nome']}")
         if st.sidebar.button("Sair"): st.session_state.usuario_logado = None; st.rerun()
@@ -119,7 +115,6 @@ try:
         
         if aberto:
             if not ja:
-                # Usa o destino padrão do cadastro
                 dest_user = user.get('QG_RMCF_OUTROS') or user.get('QG_RMCF_OUT') or "QG"
                 st.info(f"Dados: {user['Graduação']} {user['Nome']} | Destino: {dest_user}")
                 if st.button("🚀 SALVAR MINHA PRESENÇA"):
