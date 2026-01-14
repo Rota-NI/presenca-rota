@@ -115,14 +115,15 @@ try:
                 l_t = st.text_input("Telefone (Apenas números):")
                 l_s = st.text_input("Senha:", type="password")
                 if st.form_submit_button("ENTRAR", use_container_width=True):
+                    # Ajustado para ler a coluna TELEFONE exatamente como na planilha
                     u_a = next((u for u in records_u if str(u.get('Email','')).strip().lower() == l_e.strip().lower() 
                                 and str(u.get('Senha','')) == str(l_s)
-                                and str(u.get('Telefone','')).strip() == l_t.strip()), None)
+                                and str(u.get('TELEFONE','')).strip() == l_t.strip()), None)
                     if u_a: st.session_state.usuario_logado = u_a; st.rerun()
-                    else: st.error("Dados de acesso incorretos.")
+                    else: st.error("E-mail, Telefone ou Senha incorretos.")
         with t2:
             if len(records_u) >= 100:
-                st.warning("⚠️ Limite de 100 usuários atingido.")
+                st.warning("⚠️ Limite de 100 usuários cadastrados atingido.")
             else:
                 with st.form("form_novo_cadastro"):
                     n_n, n_e = st.text_input("Nome de Escala:"), st.text_input("E-mail (Login):")
@@ -132,6 +133,7 @@ try:
                     if st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True):
                         if any(str(u.get('Email','')).strip().lower() == n_e.strip().lower() for u in records_u): st.error("E-mail já cadastrado.")
                         else:
+                            # Salva na coluna TELEFONE (G) conforme sua imagem
                             doc_escrita.worksheet("Usuarios").append_row([n_n, n_g, n_l, n_p, n_o, n_e, n_t])
                             st.cache_data.clear(); st.success("Cadastro realizado!")
         with t3:
@@ -158,8 +160,8 @@ try:
             e_r = st.text_input("E-mail cadastrado:")
             if st.button("RECUPERAR DADOS", use_container_width=True):
                 u_r = next((u for u in records_u if str(u.get('Email', '')).strip().lower() == e_r.strip().lower()), None)
-                # ALTERAÇÃO SOLICITADA: Incluindo Telefone na recuperação
-                if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')} | Tel: {u_r.get('Telefone')}")
+                # Ajustado para buscar TELEFONE exatamente como no cabeçalho da planilha
+                if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')} | Tel: {u_r.get('TELEFONE')}")
                 else: st.error("E-mail não encontrado.")
     else:
         u = st.session_state.usuario_logado
