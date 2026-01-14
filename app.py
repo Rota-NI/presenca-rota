@@ -54,10 +54,10 @@ def verificar_status_e_limpar(sheet_p, dados_p):
         except: pass
     
     is_aberto = (dia_semana == 6 and hora_atual >= time(19, 0)) or \
-                (dia_semana in [0, 1, 2, 3] and (hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(14, 0) or hora_atual >= time(19, 0))) or \
-                (dia_semana == 4 and time(7, 0) <= hora_atual <= time(14, 0))
+                (dia_semana in [0, 1, 2, 3] and (hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(17, 0) or hora_atual >= time(19, 0))) or \
+                (dia_semana == 4 and time(7, 0) <= hora_atual <= time(17, 0))
     
-    janela_conferencia = (time(5, 0) < hora_atual < time(7, 0)) or (time(14, 0) < hora_atual < time(19, 0))
+    janela_conferencia = (time(5, 0) < hora_atual < time(7, 0)) or (time(17, 0) < hora_atual < time(19, 0))
     return is_aberto, janela_conferencia
 
 def aplicar_ordenacao(df):
