@@ -35,33 +35,44 @@ def verificar_status():
 
     return aberto, deve_limpar
 
-# --- FUNÇÃO DE ORDENAÇÃO REVISADA ---
+# --- FUNÇÃO DE ORDENAÇÃO GLOBAL CORRIGIDA ---
 def aplicar_ordenacao(df):
-    # Ordem dos Destinos
+    # Pesos para Destino (Somente para Militares)
     peso_destino = {"QG": 1, "RMCF": 2, "OUTROS": 3}
     
-    # Ordem de Graduação (Militares 1-11, FCs 100+)
-    # Isso garante que dentro do mesmo destino, os militares venham antes dos FCs
+    # Pesos para Graduação
+    # Militares têm pesos baixos (1-11)
+    # FCs têm pesos altos (100+) para jogá-los para o fim da lista total
     peso_grad = {
         "TCEL": 1, "MAJ": 2, "CAP": 3, "1º TEN": 4, "2º TEN": 5, "SUBTEN": 6,
         "1º SGT": 7, "2º SGT": 8, "3º SGT": 9, "CB": 10, "SD": 11,
         "FC COM": 101, "FC TER": 102
     }
 
-    # Usando os nomes das colunas da sua planilha
     col_destino = "QG_RMCF_OUTROS" 
     col_grad = "GRADUAÇÃO"
     col_data = "DATA_HORA"
     
-    # Criar colunas de ordenação
-    df['p_dest'] = df[col_destino].map(peso_destino).fillna(99)
+    # 1. Definir se é Militar ou FC
+    df['is_fc'] = df[col_grad].apply(lambda x: 1 if "FC" in str(x) else 0)
+    
+    # 2. Peso do Destino: Se for FC, o destino não conta na prioridade inicial (peso fixo alto)
+    df['p_dest'] = df.apply(lambda r: peso_destino.get(r[col_destino], 99) if r['is_fc'] == 0 else 99, axis=1)
+    
+    # 3. Peso da Graduação
     df['p_grad'] = df[col_grad].map(peso_grad).fillna(999)
+    
+    # 4. Data/Hora
     df['dt_temp'] = pd.to_datetime(df[col_data], dayfirst=True)
 
-    # ORDENAÇÃO: 1º Destino, 2º Categoria (Militar/FC), 3º Patente, 4º Hora de chegada
-    df = df.sort_values(by=['p_dest', 'p_grad', 'dt_temp']).reset_index(drop=True)
+    # ORDENAÇÃO FINAL:
+    # Primeiro: Militares (is_fc=0) antes de FCs (is_fc=1)
+    # Segundo: Ordem de Destino (apenas militares sentirão isso)
+    # Terceiro: Patente/Graduação
+    # Quarto: Hora de chegada
+    df = df.sort_values(by=['is_fc', 'p_dest', 'p_grad', 'dt_temp']).reset_index(drop=True)
     
-    return df.drop(columns=['p_dest', 'p_grad', 'dt_temp'])
+    return df.drop(columns=['is_fc', 'p_dest', 'p_grad', 'dt_temp'])
 
 # --- INTERFACE ---
 st.markdown("<h1 style='text-align: center;'>🚌 ROTA NOVA IGUAÇU</h1>", unsafe_allow_html=True)
@@ -98,7 +109,6 @@ try:
     else:
         st.info("🕒 Sistema fechado para registros. Apenas consulta disponível.")
 
-    # --- TABELA E PDF ---
     dados = sheet.get_all_values()
     if len(dados) > 1:
         df = pd.DataFrame(dados[1:], columns=dados[0])
@@ -107,7 +117,6 @@ try:
         st.subheader("Pessoas Presentes")
         st.table(df_sorted)
 
-        # PDF formatado
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", "B", 14)
@@ -115,7 +124,6 @@ try:
         pdf.ln(5)
         pdf.set_font("Arial", "B", 8)
         w = [35, 25, 25, 65, 40]
-        # Cabeçalhos do PDF
         headers = ["DATA_HORA", "DESTINO", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
         for i, h in enumerate(headers): pdf.cell(w[i], 8, h, border=1, align="C")
         pdf.ln()
