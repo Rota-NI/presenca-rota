@@ -16,7 +16,7 @@ def conectar_gsheets():
     creds = Credentials.from_service_account_info(info, scopes=scope)
     return gspread.authorize(creds)
 
-@st.cache_data(ttl=60) # Cache de 1 minuto para usuários
+@st.cache_data(ttl=60)
 def buscar_usuarios_cadastrados():
     try:
         client = conectar_gsheets()
@@ -25,7 +25,7 @@ def buscar_usuarios_cadastrados():
     except:
         return []
 
-@st.cache_data(ttl=15) # Cache de 15 segundos para a lista de presença
+@st.cache_data(ttl=15)
 def buscar_presenca_atualizada():
     try:
         client = conectar_gsheets()
@@ -42,6 +42,7 @@ def verificar_status_e_limpar(sheet_p, dados_p):
     agora = datetime.now(fuso_br)
     hora_atual, dia_semana = agora.time(), agora.weekday()
 
+    # Lógica de Limpeza Automática
     if hora_atual >= time(18, 50): marco = agora.replace(hour=18, minute=50, second=0, microsecond=0)
     elif hora_atual >= time(6, 50): marco = agora.replace(hour=6, minute=50, second=0, microsecond=0)
     else: marco = (agora - timedelta(days=1)).replace(hour=18, minute=50, second=0, microsecond=0)
@@ -57,9 +58,15 @@ def verificar_status_e_limpar(sheet_p, dados_p):
                 st.rerun()
         except: pass
     
-    return (dia_semana == 6 and hora_atual >= time(19, 0)) or \
-           (dia_semana in [0, 1, 2, 3] and (hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(17, 0) or hora_atual >= time(19, 0))) or \
-           (dia_semana == 4 and time(7, 0) <= hora_atual <= time(17, 0))
+    # Status Aberto/Fechado
+    is_aberto = (dia_semana == 6 and hora_atual >= time(19, 0)) or \
+                (dia_semana in [0, 1, 2, 3] and (hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(17, 0) or hora_atual >= time(19, 0))) or \
+                (dia_semana == 4 and time(7, 0) <= hora_atual <= time(17, 0))
+    
+    # Nova condição: Janela de Conferência (Lista Fechada para embarque)
+    janela_conferencia = (time(5, 0) < hora_atual < time(7, 0)) or (time(17, 0) < hora_atual < time(19, 0))
+    
+    return is_aberto, janela_conferencia
 
 def aplicar_ordenacao(df):
     if 'EMAIL' not in df.columns: df['EMAIL'] = "N/A"
@@ -142,7 +149,7 @@ try:
         st.sidebar.markdown("---")
         st.sidebar.write("**MAJ ANDRÉ AGUIAR - CAES**")
 
-        aberto = verificar_status_e_limpar(sheet_p_escrita, dados_p)
+        aberto, janela_conf = verificar_status_e_limpar(sheet_p_escrita, dados_p)
         df_o, df_v = pd.DataFrame(), pd.DataFrame()
         ja, pos = False, 999
         
@@ -168,10 +175,12 @@ try:
                         if len(r) >= 6 and str(r[5]).strip().lower() == email_logado:
                             sheet_p_escrita.delete_rows(idx + 1)
                             st.cache_data.clear(); st.rerun()
-        else: st.info("⌛ Lista fechada.")
+        else: 
+            st.info("⌛ Lista fechada para novas inscrições.")
 
-        # Checklist de Embarque liberado para os TRÊS PRIMEIROS da lista
-        if ja and pos <= 3:
+        # --- CONFERÊNCIA DE EMBARQUE ---
+        # Só aparece se for um dos 3 primeiros E estiver dentro do horário de conferência (fechado)
+        if ja and pos <= 3 and janela_conf:
             st.divider(); st.subheader("📋 CONFERÊNCIA DE EMBARQUE")
             if st.button("📝 ABRIR / FECHAR PAINEL", use_container_width=True):
                 st.session_state.conf_ativa = not st.session_state.conf_ativa
@@ -201,4 +210,4 @@ try:
     st.markdown(f'<div class="footer">Desenvolvido por: <b>MAJ ANDRÉ AGUIAR - CAES</b></div>', unsafe_allow_html=True)
 
 except Exception as e:
-    st.error(f"⚠️ Erro de conexão com o servidor. Aguarde 10 segundos. Detalhe: {e}")
+    st.error(f"⚠️ Erro de conexão com o servidor. Detalhe: {e}")
