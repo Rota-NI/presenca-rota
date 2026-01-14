@@ -6,7 +6,6 @@ from datetime import datetime, time, timedelta
 import pytz
 from fpdf import FPDF
 import urllib.parse
-import time as time_module
 
 # --- CONFIGURAÇÃO DE ACESSO ---
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -41,18 +40,21 @@ def verificar_status_e_limpar(sheet_p, dados_p):
     agora = datetime.now(fuso_br)
     hora_atual, dia_semana = agora.time(), agora.weekday()
 
+    # Define os marcos de limpeza
     if hora_atual >= time(18, 50): marco = agora.replace(hour=18, minute=50, second=0, microsecond=0)
     elif hora_atual >= time(13, 50): marco = agora.replace(hour=13, minute=50, second=0, microsecond=0)
     else: marco = (agora - timedelta(days=1)).replace(hour=13, minute=50, second=0, microsecond=0)
 
+    # EXECUÇÃO PRIORITÁRIA DA LIMPEZA
     if dados_p and len(dados_p) > 1:
         try:
             ultima_str = dados_p[-1][0]
             ultima_dt = fuso_br.localize(datetime.strptime(ultima_str, '%d/%m/%Y %H:%M:%S'))
             if ultima_dt < marco:
-                sheet_p.resize(rows=1); sheet_p.resize(rows=100)
+                sheet_p.resize(rows=1)
+                sheet_p.resize(rows=100)
                 st.cache_data.clear()
-                st.rerun()
+                st.rerun() # Reinicia para garantir que a próxima leitura venha vazia
         except: pass
     
     is_aberto = (dia_semana == 6 and hora_atual >= time(19, 0)) or \
@@ -104,14 +106,20 @@ st.markdown('<div class="titulo-container"><div class="titulo-responsivo">🚌 R
 
 if 'usuario_logado' not in st.session_state: st.session_state.usuario_logado = None
 if 'conf_ativa' not in st.session_state: st.session_state.conf_ativa = False
-# Controle de Sincronização
-if 'sincronizado_bd' not in st.session_state: st.session_state.sincronizado_bd = False
 
 try:
-    records_u = buscar_usuarios_cadastrados()
-    dados_p = buscar_presenca_atualizada()
+    # 1. CONECTA PRIMEIRO PARA LIMPEZA
     doc_escrita = conectar_escrita_direta()
     sheet_p_escrita = doc_escrita.sheet1
+    
+    # 2. BUSCA DADOS ATUAIS APENAS PARA VERIFICAR LIMPEZA
+    dados_p = buscar_presenca_atualizada()
+    
+    # 3. VERIFICA E LIMPA ANTES DE QUALQUER EXIBIÇÃO
+    aberto, janela_conf = verificar_status_e_limpar(sheet_p_escrita, dados_p)
+    
+    # 4. BUSCA USUÁRIOS
+    records_u = buscar_usuarios_cadastrados()
 
     if st.session_state.usuario_logado is None:
         t1, t2, t3, t4 = st.tabs(["Login", "Cadastro", "Instruções", "Recuperar"])
@@ -121,12 +129,11 @@ try:
                 if st.form_submit_button("ENTRAR", use_container_width=True):
                     u_a = next((u for u in records_u if str(u.get('Email','')).strip().lower() == l_e.strip().lower() and str(u.get('Senha','')) == str(l_s)), None)
                     if u_a: 
-                        st.session_state.usuario_logado = u_a
-                        st.session_state.sincronizado_bd = False # Reseta trava para verificar BD no login
                         st.cache_data.clear()
+                        st.session_state.usuario_logado = u_a
                         st.rerun()
                     else: st.error("E-mail ou senha incorretos.")
-        # ... Mantendo as abas t2, t3 e t4 conforme o seu script anterior ...
+        # ... abas t2, t3 e t4 permanecem idênticas ...
         with t2:
             with st.form("form_novo_cadastro"):
                 n_n, n_e = st.text_input("Nome de Escala:"), st.text_input("E-mail (Login):")
@@ -158,32 +165,14 @@ try:
                 if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')}")
                 else: st.error("E-mail não encontrado.")
     else:
-        # DETERMINAÇÃO: SINCRONIZAÇÃO INTELIGENTE PÓS-CARGA
-        if not st.session_state.sincronizado_bd:
-            time_module.sleep(1) # Aguarda 1 segundo conforme solicitado
-            client_sync = conectar_gsheets()
-            sheet_sync = client_sync.open("ListaPresenca").sheet1
-            dados_reais = sheet_sync.get_all_values()
-            
-            # Se BD está vazio mas o cache local (dados_p) ainda tem dados
-            if len(dados_reais) <= 1 and (dados_p and len(dados_p) > 1):
-                st.cache_data.clear()
-                st.session_state.sincronizado_bd = True
-                st.rerun()
-            st.session_state.sincronizado_bd = True
-
         u = st.session_state.usuario_logado
         st.sidebar.markdown("### 👤 Usuário Conectado")
         st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
-        if st.sidebar.button("Sair", use_container_width=True): 
-            st.session_state.usuario_logado = None
-            st.session_state.sincronizado_bd = False
-            st.rerun()
+        if st.sidebar.button("Sair", use_container_width=True): st.session_state.usuario_logado = None; st.rerun()
         st.sidebar.markdown("---")
         st.sidebar.caption("Desenvolvido por:")
         st.sidebar.write("MAJ ANDRÉ AGUIAR - CAES")
 
-        aberto, janela_conf = verificar_status_e_limpar(sheet_p_escrita, dados_p)
         df_o, df_v = pd.DataFrame(), pd.DataFrame()
         ja, pos = False, 999
         
