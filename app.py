@@ -56,9 +56,24 @@ def aplicar_ordenacao_e_numeracao(df):
 # --- INTERFACE ---
 st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered")
 
-# CSS para tornar a tabela responsiva e redimensionável pelo usuário
+# CSS para tornar o Título e a Tabela responsivos
 st.markdown("""
     <style>
+    /* Estilo para o Título Responsivo */
+    .titulo-container {
+        text-align: center;
+        width: 100%;
+    }
+    .titulo-responsivo {
+        font-size: clamp(1.5rem, 5vw, 2.5rem); /* Ajusta entre 1.5rem e 2.5rem conforme a tela */
+        font-weight: bold;
+        margin-bottom: 20px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    /* Estilo para a Tabela Responsiva */
     .tabela-responsiva {
         width: 100%;
         overflow-x: auto;
@@ -75,7 +90,12 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: center;'>🚌 ROTA NOVA IGUAÇU</h1>", unsafe_allow_html=True)
+# Aplicação do Título Adaptável
+st.markdown("""
+    <div class="titulo-container">
+        <div class="titulo-responsivo">🚌 ROTA NOVA IGUAÇU</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 if 'usuario_logado' not in st.session_state:
     st.session_state.usuario_logado = None
@@ -141,7 +161,7 @@ try:
             df = aplicar_ordenacao_e_numeracao(pd.DataFrame(dados_p[1:], columns=dados_p[0]))
             st.subheader(f"Pessoas Presentes ({len(df)})")
             
-            # Tabela dentro de uma DIV para permitir rolagem e redimensionamento no mobile
+            # Tabela responsiva
             html_tabela = f'<div class="tabela-responsiva">{df.to_html(index=False, justify="center", border=0)}</div>'
             st.write(html_tabela, unsafe_allow_html=True)
             
