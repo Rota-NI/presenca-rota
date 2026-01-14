@@ -21,7 +21,6 @@ def verificar_status():
     dia_semana = agora.weekday()
     hora_atual = agora.time()
 
-    # Janelas de limpeza (10 min antes do início dos turnos: 06:50 e 18:50)
     deve_limpar = (time(6, 50) <= hora_atual <= time(6, 59)) or (time(18, 50) <= hora_atual <= time(18, 59))
 
     aberto = False
@@ -36,27 +35,32 @@ def verificar_status():
 
     return aberto, deve_limpar
 
-# --- FUNÇÃO DE ORDENAÇÃO CONFORME DETERMINADO ---
+# --- FUNÇÃO DE ORDENAÇÃO REVISADA ---
 def aplicar_ordenacao(df):
-    # Definindo pesos para Destino
-    peso_destino = {"QG": 10, "RMCF": 20, "OUTROS": 30}
+    # Ordem dos Destinos
+    peso_destino = {"QG": 1, "RMCF": 2, "OUTROS": 3}
     
-    # Definindo pesos para Graduação (Militares 1-11, FCs 100+)
+    # Ordem de Graduação (Militares 1-11, FCs 100+)
+    # Isso garante que dentro do mesmo destino, os militares venham antes dos FCs
     peso_grad = {
         "TCEL": 1, "MAJ": 2, "CAP": 3, "1º TEN": 4, "2º TEN": 5, "SUBTEN": 6,
         "1º SGT": 7, "2º SGT": 8, "3º SGT": 9, "CB": 10, "SD": 11,
         "FC COM": 101, "FC TER": 102
     }
 
-    # Ajuste para o nome exato da sua coluna na planilha
+    # Usando os nomes das colunas da sua planilha
     col_destino = "QG_RMCF_OUTROS" 
+    col_grad = "GRADUAÇÃO"
+    col_data = "DATA_HORA"
     
+    # Criar colunas de ordenação
     df['p_dest'] = df[col_destino].map(peso_destino).fillna(99)
-    df['p_grad'] = df['GRADUAÇÃO'].map(peso_grad).fillna(999)
-    df['dt_temp'] = pd.to_datetime(df['DATA_HORA'], dayfirst=True)
+    df['p_grad'] = df[col_grad].map(peso_grad).fillna(999)
+    df['dt_temp'] = pd.to_datetime(df[col_data], dayfirst=True)
 
-    # Ordena por Destino, depois pela categoria (Militar vs FC), depois Patente e Hora
+    # ORDENAÇÃO: 1º Destino, 2º Categoria (Militar/FC), 3º Patente, 4º Hora de chegada
     df = df.sort_values(by=['p_dest', 'p_grad', 'dt_temp']).reset_index(drop=True)
+    
     return df.drop(columns=['p_dest', 'p_grad', 'dt_temp'])
 
 # --- INTERFACE ---
@@ -84,36 +88,46 @@ try:
             
             if st.form_submit_button("SALVAR PRESENÇA"):
                 if nome and unid:
-                    agora = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
+                    fuso_br = pytz.timezone('America/Sao_Paulo')
+                    agora = datetime.now(fuso_br).strftime('%d/%m/%Y %H:%M:%S')
                     sheet.append_row([agora, dest, grad, nome, unid])
                     st.success("Presença registrada!")
                     st.rerun()
+                else:
+                    st.error("Preencha Nome e Lotação.")
     else:
-        st.info("🕒 Sistema fechado para novos registros. Apenas consulta e PDF disponíveis.")
+        st.info("🕒 Sistema fechado para registros. Apenas consulta disponível.")
 
     # --- TABELA E PDF ---
     dados = sheet.get_all_values()
     if len(dados) > 1:
         df = pd.DataFrame(dados[1:], columns=dados[0])
         df_sorted = aplicar_ordenacao(df)
+        
         st.subheader("Pessoas Presentes")
         st.table(df_sorted)
 
-        # Gerar PDF com os dados ordenados
+        # PDF formatado
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", "B", 14)
         pdf.cell(190, 10, "LISTA DE PRESENÇA - ROTA NOVA IGUAÇU", ln=True, align="C")
+        pdf.ln(5)
         pdf.set_font("Arial", "B", 8)
         w = [35, 25, 25, 65, 40]
-        for i, h in enumerate(df_sorted.columns): pdf.cell(w[i], 8, h, border=1, align="C")
+        # Cabeçalhos do PDF
+        headers = ["DATA_HORA", "DESTINO", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
+        for i, h in enumerate(headers): pdf.cell(w[i], 8, h, border=1, align="C")
         pdf.ln()
+        
         pdf.set_font("Arial", "", 8)
         for _, r in df_sorted.iterrows():
             for i in range(5): pdf.cell(w[i], 8, str(r[i]), border=1)
             pdf.ln()
         
-        st.download_button("📄 BAIXAR LISTA EM PDF", pdf.output(dest="S").encode("latin-1"), "lista.pdf", "application/pdf")
+        st.download_button("📄 BAIXAR LISTA EM PDF", pdf.output(dest="S").encode("latin-1"), f"lista_{datetime.now().strftime('%Hh%M')}.pdf", "application/pdf")
+    else:
+        st.info("Nenhuma presença registrada ainda.")
 
 except Exception as e:
     st.error(f"Erro: {e}")
