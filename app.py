@@ -5,6 +5,7 @@ import pandas as pd
 from datetime import datetime, time
 import pytz
 from fpdf import FPDF
+import urllib.parse
 
 # --- CONFIGURAÇÃO DE ACESSO ---
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -117,28 +118,39 @@ try:
             df = aplicar_ordenacao_e_numeracao(pd.DataFrame(dados_p[1:], columns=dados_p[0]))
             st.subheader(f"Pessoas Presentes ({len(df)})")
             
-            # Exibição HTML para ocultar índice e mostrar lista completa
             st.write(df.to_html(index=False, justify='center', border=0), unsafe_allow_html=True)
             
-            # --- GERAÇÃO DO PDF ---
-            pdf = FPDF()
-            pdf.add_page()
-            pdf.set_font("Arial", "B", 14)
-            pdf.cell(190, 10, "LISTA DE PRESENÇA - ROTA NOVA IGUAÇU", ln=True, align="C")
-            pdf.set_font("Arial", "B", 8)
-            w = [12, 30, 20, 25, 63, 40]
-            headers = ["Nº", "DATA_HORA", "DESTINO", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
-            for i, h in enumerate(headers): pdf.cell(w[i], 8, h, border=1, align="C")
-            pdf.ln()
+            # --- BOTÕES DE EXPORTAÇÃO ---
+            col_pdf, col_wpp = st.columns(2)
             
-            pdf.set_font("Arial", "", 8)
-            for _, r in df.iterrows():
-                for i in range(len(headers)): 
-                    pdf.cell(w[i], 8, str(r[i]), border=1)
+            with col_pdf:
+                # GERAÇÃO DO PDF
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Arial", "B", 14)
+                pdf.cell(190, 10, "LISTA DE PRESENÇA - ROTA NOVA IGUAÇU", ln=True, align="C")
+                pdf.set_font("Arial", "B", 8)
+                w = [12, 30, 20, 25, 63, 40]
+                headers = ["Nº", "DATA_HORA", "DESTINO", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
+                for i, h in enumerate(headers): pdf.cell(w[i], 8, h, border=1, align="C")
                 pdf.ln()
+                pdf.set_font("Arial", "", 8)
+                for _, r in df.iterrows():
+                    for i in range(len(headers)): pdf.cell(w[i], 8, str(r[i]), border=1)
+                    pdf.ln()
+                st.download_button("📄 BAIXAR PDF", pdf.output(dest="S").encode("latin-1"), f"lista_{datetime.now().strftime('%Hh%M')}.pdf", "application/pdf")
             
-            st.download_button("📄 BAIXAR LISTA EM PDF", pdf.output(dest="S").encode("latin-1"), f"lista_{datetime.now().strftime('%Hh%M')}.pdf", "application/pdf")
-            
+            with col_wpp:
+                # GERAÇÃO DO RESUMO WHATSAPP
+                agora_formatado = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y às %H:%M')
+                texto_wpp = f"*🚌 LISTA DE PRESENÇA - ROTA NOVA IGUAÇU*\n_Atualizada em {agora_formatado}_\n\n"
+                for _, r in df.iterrows():
+                    texto_wpp += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']} ({r['QG_RMCF_OUTROS']})\n"
+                
+                texto_url = urllib.parse.quote(texto_wpp)
+                link_wpp = f"https://wa.me/?text={texto_url}"
+                st.markdown(f'<a href="{link_wpp}" target="_blank"><button style="width:100%; height:38px; background-color:#25D366; color:white; border:none; border-radius:4px; cursor:pointer;">🟢 ENVIAR WHATSAPP</button></a>', unsafe_allow_html=True)
+
             if ja and st.button("❌ EXCLUIR MINHA ASSINATURA"):
                 for idx, r in enumerate(dados_p):
                     if r[3] == user['Nome']: sheet_p.delete_rows(idx + 1); st.rerun()
