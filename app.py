@@ -271,5 +271,5 @@ try:
                 for _, r in df_o.iterrows(): txt_w += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']}\n"
                 st.markdown(f'<a href="https://wa.me/?text={urllib.parse.quote(txt_w)}" target="_blank"><button style="width:100%; height:38px; background-color:#25D366; color:white; border:none; border-radius:4px; font-weight:bold;">🟢 WHATSAPP</button></a>', unsafe_allow_html=True)
 
-    st.markdown(f'<div class="footer">Desenvolvido por: <b>MAJ ANDRÉ AGUIAR - CAES</b></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="footer">Desenvolvido por:       <b>MAJ ANDRÉ AGUIAR - CAES</b></div>', unsafe_allow_html=True)
 except Exception as e: st.error(f"⚠️ Erro: {e}")
