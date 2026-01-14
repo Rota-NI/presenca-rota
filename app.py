@@ -3,7 +3,8 @@ import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime, time
-import pytz # Biblioteca para fuso horário
+import pytz
+from fpdf import FPDF
 
 # --- CONFIGURAÇÃO DE ACESSO ---
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -15,7 +16,6 @@ def conectar():
 
 # --- LÓGICA DE HORÁRIO ---
 def verificar_acesso():
-    # Define o fuso horário de Brasília
     fuso_br = pytz.timezone('America/Sao_Paulo')
     agora = datetime.now(fuso_br)
     dia_semana = agora.weekday() # 0=Segunda, 6=Domingo
@@ -28,36 +28,57 @@ def verificar_acesso():
         if hora_atual >= time(19, 0):
             aberto = True
     
-    # Segunda (0): Madrugada do domingo (até 05:00) OU 07:00 às 17:00 OU 19:00 em diante
-    elif dia_semana == 0:
+    # Segunda (0), Terça (1), Quarta (2), Quinta (3)
+    elif dia_semana in [0, 1, 2, 3]:
+        # Madrugada do dia anterior (até 05:00) OU 07:00 às 17:00 OU 19:00 em diante
         if hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(17, 0) or hora_atual >= time(19, 0):
             aberto = True
 
-    # Terça (1), Quarta (2), Quinta (3): Madrugada do dia anterior (até 05:00) OU 07:00 às 17:00 OU 19:00 em diante
-    elif dia_semana in [1, 2, 3]:
-        if hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(17, 0) or hora_atual >= time(19, 0):
-            aberto = True
-
-    # Sexta (4): Madrugada de quinta (até 05:00) OU 07:00 às 17:00
+    # Sexta (4)
     elif dia_semana == 4:
+        # Madrugada de quinta (até 05:00) OU 07:00 às 17:00
         if hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(17, 0):
             aberto = True
             
-    # Sábado (5): Madrugada de sexta (até 05:00) - Fechado o resto do dia
+    # Sábado (5)
     elif dia_semana == 5:
+        # Madrugada de sexta (até 05:00)
         if hora_atual <= time(5, 0):
             aberto = True
 
     return aberto
 
-# --- TÍTULO ---
+# --- FUNÇÃO PARA GERAR PDF ---
+def gerar_pdf(df):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(190, 10, "LISTA DE PRESENÇA - ROTA NOVA IGUAÇU", ln=True, align="C")
+    pdf.ln(10)
+    
+    pdf.set_font("Arial", "B", 10)
+    col_widths = [40, 25, 25, 60, 40]
+    headers = ["DATA/HORA", "DESTINO", "GRAD.", "NOME", "LOTAÇÃO"]
+    
+    for i, header in enumerate(headers):
+        pdf.cell(col_widths[i], 10, header, border=1, align="C")
+    pdf.ln()
+    
+    pdf.set_font("Arial", "", 9)
+    for index, row in df.iterrows():
+        for i in range(len(headers)):
+            pdf.cell(col_widths[i], 10, str(row[i]), border=1)
+        pdf.ln()
+        
+    return pdf.output(dest="S").encode("latin-1")
+
+# --- INTERFACE ---
 st.markdown("<h1 style='text-align: center;'>🚌 ROTA NOVA IGUAÇU</h1>", unsafe_allow_html=True)
 
 try:
     if verificar_acesso():
         sheet = conectar()
         
-        # --- FORMULÁRIO ---
         with st.form("meu_formulario", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
@@ -85,33 +106,24 @@ try:
         st.warning("⚠️ O sistema está fora do horário de funcionamento.")
         st.info("Horários: Dom 19h às Seg 05h | Seg-Qui: 07h-17h e 19h-05h | Sex: 07h-17h")
 
-    # --- MOSTRAR TABELA E PDF (Sempre visíveis para consulta) ---
+    # --- TABELA E PDF (Sempre disponíveis para consulta) ---
     st.subheader("Pessoas Presentes")
-    from fpdf import FPDF
-    def gerar_pdf(df):
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", "B", 16)
-        pdf.cell(190, 10, "LISTA DE PRESENÇA - ROTA NOVA IGUAÇU", ln=True, align="C")
-        pdf.ln(10)
-        pdf.set_font("Arial", "B", 10)
-        col_widths = [40, 25, 25, 60, 40]
-        headers = ["DATA/HORA", "DESTINO", "GRAD.", "NOME", "LOTAÇÃO"]
-        for i, h in enumerate(headers): pdf.cell(col_widths[i], 10, h, border=1, align="C")
-        pdf.ln()
-        pdf.set_font("Arial", "", 9)
-        for _, row in df.iterrows():
-            for i in range(5): pdf.cell(col_widths[i], 10, str(row[i]), border=1)
-            pdf.ln()
-        return pdf.output(dest="S").encode("latin-1")
-
-    sheet_data = conectar() # Conecta apenas para ler a tabela
-    dados = sheet_data.get_all_values()
+    sheet_consulta = conectar()
+    dados = sheet_consulta.get_all_values()
+    
     if len(dados) > 1:
         df = pd.DataFrame(dados[1:], columns=dados[0])
         st.table(df)
+        
         pdf_data = gerar_pdf(df)
-        st.download_button("📄 BAIXAR LISTA EM PDF", pdf_data, f"presenca_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
+        st.download_button(
+            label="📄 BAIXAR LISTA EM PDF",
+            data=pdf_data,
+            file_name=f"presenca_rota_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf"
+        )
+    else:
+        st.info("Nenhuma presença registrada ainda.")
 
 except Exception as e:
-    st.error(f"Erro: {e}")
+    st.error(f"Erro de conexão ou configuração: {e}")
