@@ -20,9 +20,9 @@ def enviar_email_recuperacao(destinatario, usuario, senha):
     try:
         remetente = st.secrets["email_user"]
         senha_app = st.secrets["email_password"]
-        corpo = f"Olá,\n\nSeus dados de acesso à Rota Nova Iguaçu são:\nUsuário: {usuario}\nSenha: {senha}"
+        corpo = f"Olá,\n\nSeus dados de acesso à Rota Nova Iguaçu são:\n\nUsuário: {usuario}\nSenha: {senha}\n\nUtilize estes dados para realizar o seu login."
         msg = MIMEText(corpo)
-        msg['Subject'] = 'Recuperação de Acesso - Rota'
+        msg['Subject'] = 'Recuperação de Acesso - Rota Nova Iguaçu'
         msg['From'] = remetente
         msg['To'] = destinatario
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
@@ -49,7 +49,9 @@ def aplicar_ordenacao_e_numeracao(df):
     peso_destino = {"QG": 1, "RMCF": 2, "OUTROS": 3}
     peso_grad = {"TCEL": 1, "MAJ": 2, "CAP": 3, "1º TEN": 4, "2º TEN": 5, "SUBTEN": 6, "1º SGT": 7, "2º SGT": 8, "3º SGT": 9, "CB": 10, "SD": 11, "FC COM": 101, "FC TER": 102}
     df['is_fc'] = df['GRADUAÇÃO'].apply(lambda x: 1 if "FC" in str(x) else 0)
-    df['p_dest'] = df.apply(lambda r: peso_destino.get(r['QG_RMCF_OUTROS'], 99) if r['is_fc'] == 0 else 99, axis=1)
+    # Proteção caso o nome da coluna no Sheets mude
+    col_dest_sheets = "QG_RMCF_OUTROS" if "QG_RMCF_OUTROS" in df.columns else "QG_RMCF_OUT"
+    df['p_dest'] = df.apply(lambda r: peso_destino.get(r[col_dest_sheets], 99) if r['is_fc'] == 0 else 99, axis=1)
     df['p_grad'] = df['GRADUAÇÃO'].map(peso_grad).fillna(999)
     df['dt_temp'] = pd.to_datetime(df['DATA_HORA'], dayfirst=True)
     df = df.sort_values(by=['is_fc', 'p_dest', 'p_grad', 'dt_temp']).reset_index(drop=True)
@@ -73,24 +75,31 @@ try:
             l_s = st.text_input("Senha:", type="password")
             if st.button("Entrar"):
                 users = sheet_u.get_all_records()
-                u_a = next((u for u in users if str(u['Nome']) == l_n and str(u['Senha']) == str(l_s)), None)
+                u_a = next((u for u in users if str(u['Nome']).strip() == l_n.strip() and str(u['Senha']).strip() == str(l_s).strip()), None)
                 if u_a: st.session_state.usuario_logado = u_a; st.rerun()
-                else: st.error("Login inválido.")
+                else: st.error("Usuário ou senha inválidos.")
         with t2:
             with st.form("cad"):
                 n_n, n_e = st.text_input("Nome de Escala:"), st.text_input("E-mail:")
                 n_g = st.selectbox("Graduação:", ["TCEL", "MAJ", "CAP", "1º TEN", "2º TEN", "SUBTEN", "1º SGT", "2º SGT", "3º SGT", "CB", "SD", "FC COM", "FC TER"])
                 n_u, n_d = st.text_input("Lotação:"), st.selectbox("Destino Padrão:", ["QG", "RMCF", "OUTROS"])
-                n_s = st.text_input("Senha:", type="password")
+                n_s = st.text_input("Crie uma Senha:", type="password")
                 if st.form_submit_button("Cadastrar"):
                     sheet_u.append_row([n_n, n_g, n_u, n_s, n_d, n_e]); st.success("Cadastrado! Faça Login.")
         with t3:
-            e_r = st.text_input("E-mail cadastrado:")
+            e_r = st.text_input("Digite o e-mail cadastrado para recuperar:")
             if st.button("Recuperar Dados"):
                 users = sheet_u.get_all_records()
-                u_r = next((u for u in users if str(u['Email']) == e_r), None)
-                if u_r and enviar_email_recuperacao(e_r, u_r['Nome'], u_r['Senha']): st.success("E-mail enviado!")
-                else: st.error("E-mail não encontrado.")
+                # Lógica robusta: remove espaços e ignora maiúsculas
+                u_r = next((u for u in users if str(u.get('Email', '')).strip().lower() == e_r.strip().lower()), None)
+                if u_r:
+                    # Tenta pegar o nome da coluna de senha de forma dinâmica
+                    senha_rec = u_r.get('Senha')
+                    nome_rec = u_r.get('Nome')
+                    if enviar_email_recuperacao(e_r, nome_rec, senha_rec):
+                        st.success(f"Dados enviados com sucesso para {e_r}!")
+                    else: st.error("Erro técnico ao enviar o e-mail. Verifique os Secrets.")
+                else: st.error("E-mail não encontrado na nossa base de usuários.")
     else:
         u = st.session_state.usuario_logado
         st.sidebar.info(f"Logado: {u['Graduação']} {u['Nome']}")
@@ -104,12 +113,14 @@ try:
         
         if aberto:
             if not ja:
-                st.info(f"Dados: {u['Graduação']} {u['Nome']} | Destino: {u['QG_RMCF_OUTROS']}")
+                # Usa o destino do usuário ou QG como padrão caso a coluna esteja diferente
+                dest_user = u.get('QG_RMCF_OUTROS') or u.get('QG_RMCF_OUT') or "QG"
+                st.info(f"Dados: {u['Graduação']} {u['Nome']} | Destino: {dest_user}")
                 if st.button("🚀 SALVAR MINHA PRESENÇA"):
                     agora = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
-                    sheet_p.append_row([agora, u['QG_RMCF_OUTROS'], u['Graduação'], u['Nome'], u['Lotação']])
+                    sheet_p.append_row([agora, dest_user, u['Graduação'], u['Nome'], u['Lotação']])
                     st.success("Presença salva!"); st.rerun()
-            else: st.warning("✅ Presença já registrada.")
+            else: st.warning("✅ Presença já registrada para este turno.")
         else: st.info("🕒 Sistema fechado para registros.")
 
         if len(dados_p) > 1:
