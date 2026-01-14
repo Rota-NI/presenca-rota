@@ -32,10 +32,9 @@ def buscar_limite_dinamico():
         try:
             sheet_c = doc.worksheet("Config")
         except:
-            # Cria a aba automaticamente para evitar Erro técnico
+            # CORREÇÃO: Cria e preenche imediatamente para evitar erro de célula vazia
             sheet_c = doc.add_worksheet(title="Config", rows="10", cols="5")
-            sheet_c.update('A1', 'LIMITE')
-            sheet_c.update('A2', '100')
+            sheet_c.update('A1', [['LIMITE'], ['100']]) 
         val = sheet_c.acell('A2').value
         return int(val) if val else 100
     except: return 100
@@ -181,29 +180,26 @@ try:
         if st.button("⬅️ SAIR DO PAINEL"): st.session_state.is_admin = False; st.rerun()
         
         st.subheader("⚙️ Configurações Globais")
+        # CORREÇÃO: Limite lido dinamicamente da aba Config
         novo_limite = st.number_input("Limite máximo de usuários:", value=limite_max)
         if st.button("💾 SALVAR NOVO LIMITE"):
-            try:
-                sheet_config = doc_escrita.worksheet("Config")
-                sheet_config.update('A2', str(novo_limite))
-                st.cache_data.clear(); st.success("Limite atualizado!")
-            except: st.error("Erro técnico na aba 'Config'.")
+            sheet_config = doc_escrita.worksheet("Config")
+            sheet_config.update('A2', str(novo_limite))
+            st.cache_data.clear(); st.success("Limite atualizado com sucesso!"); st.rerun()
 
         st.divider(); st.subheader("👥 Gestão de Usuários")
         busca = st.text_input("🔍 Pesquisar por Nome ou E-mail:").strip().lower()
         
-        # CORREÇÃO ERRO 429 E LISTA SUMINDO
         if st.button("✅ ATIVAR TODOS OS USUÁRIOS"):
             with st.spinner("Sincronizando Banco de Dados..."):
                 num = len(records_u)
                 if num > 0:
                     status_list = [["ATIVO"]] * num
                     sheet_u_escrita.update(f'H2:H{num+1}', status_list)
-                    time_module.sleep(1) # Aguarda o Google consolidar
-                    st.cache_data.clear()
-                    st.success("Sincronização concluída!")
-                    st.rerun()
+                    time_module.sleep(1)
+                    st.cache_data.clear(); st.success("Sincronização concluída!"); st.rerun()
 
+        # RELEITURA PRIORITÁRIA DO BD PARA GESTÃO
         for i, user in enumerate(records_u):
             nome_u, email_u = str(user.get('Nome','')).lower(), str(user.get('Email','')).lower()
             if busca == "" or busca in nome_u or busca in email_u:
@@ -211,7 +207,8 @@ try:
                     c1, c2, c3 = st.columns([2, 1, 1])
                     c1.write(f"📧 {user.get('Email')} | 📱 {user.get('TELEFONE')}")
                     is_ativo = str(user.get('STATUS')).upper() == 'ATIVO'
-                    if c2.checkbox("Liberar Acesso", value=is_ativo, key=f"chk_{i}"):
+                    # CORREÇÃO: Checkbox com tique visual estável
+                    if c2.checkbox("Liberar Acesso", value=is_ativo, key=f"adm_chk_{i}"):
                         if not is_ativo: 
                             sheet_u_escrita.update_cell(i+2, 8, "ATIVO")
                             st.cache_data.clear(); st.rerun()
@@ -246,7 +243,7 @@ try:
         elif aberto:
             if st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True):
                 agora = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
-                sheet_p_escrita.append_row([agora, u.get('ORIGEM') or "QG", u.get('Graduação'), u.get('Nome'), u.get('Lotação'), u.get('Email')])
+                sheet_p_escrita.append_row([agora, u.get('QG_RMCF_OUTROS') or "QG", u.get('Graduação'), u.get('Nome'), u.get('Lotação'), u.get('Email')])
                 st.cache_data.clear(); st.rerun()
         else: st.info("⌛ Lista fechada para novas inscrições.")
 
