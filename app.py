@@ -206,11 +206,20 @@ try:
                 for i, row in df_o.iterrows(): st.checkbox(f"{row['Nº']} - {row.get('NOME')}", key=f"chk_{i}_{row.get('EMAIL')}")
 
         if dados_p and len(dados_p) > 1:
-            st.subheader(f"Voluntários Inscritos: {len(df_o)}")
-            st.subheader(f"Vagas Previstas: 38")
-            if st.button("🔄 ATUALIZAR", use_container_width=True): st.cache_data.clear(); st.rerun()
-            st.write(f'<div class="tabela-responsiva">{df_v.drop(columns=["EMAIL"]).to_html(index=False, justify="center", border=0, escape=False)}</div>', unsafe_allow_html=True)
+            inscritos = len(df_o)
+            vagas_restantes = 38 - inscritos
             
+            st.subheader(f"Voluntários Inscritos: {inscritos}")
+            st.subheader(f"Vagas Previstas: 38")
+            
+            # Exibe o saldo de vagas (Positivo para vagas livres, Negativo para excedentes)
+            if vagas_restantes >= 0:
+                st.subheader(f"Vagas Restantes: {vagas_restantes}")
+            else:
+                st.subheader(f"Excedentes: {abs(vagas_restantes)}")
+
+            if st.button("🔄 ATUALIZAR", use_container_width=True): st.cache_data.clear(); st.rerun()
+            st.write(f'<div class="tabela-responsiva">{df_v.drop(columns=["EMAIL"]).to_html(index=False, justify="center", border=0, escape=False)}</div>', unsafe_allow_html=True)            
             c1, c2 = st.columns(2)
             with c1:
                 pdf = FPDF()
