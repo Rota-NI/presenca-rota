@@ -175,38 +175,58 @@ try:
 
     elif st.session_state.is_admin:
         st.header("🛡️ PAINEL ADMINISTRATIVO")
-        if st.button("SAIR DO PAINEL"): st.session_state.is_admin = False; st.rerun()
+        if st.button("⬅️ SAIR DO PAINEL"): st.session_state.is_admin = False; st.rerun()
         
         st.subheader("⚙️ Configurações Globais")
         novo_limite = st.number_input("Limite máximo de usuários:", value=limite_max)
-        if st.button("SALVAR NOVO LIMITE"):
-            doc_escrita.worksheet("Config").update('A2', novo_limite)
+        if st.button("💾 SALVAR NOVO LIMITE"):
+            doc_escrita.worksheet("Config").update('A2', str(novo_limite))
             st.cache_data.clear(); st.success("Limite atualizado!")
 
-        st.subheader(f"👥 Gestão de Usuários ({len(records_u)})")
+        st.divider()
+        st.subheader("👥 Gestão de Usuários")
+        
+        # 1. Busca por Usuário
+        busca = st.text_input("🔍 Pesquisar por Nome ou E-mail:").strip().lower()
+        
+        # 2. Aprovar Todos
+        if st.button("✅ ATIVAR TODOS OS USUÁRIOS"):
+            pendentes = [i+2 for i, u in enumerate(records_u) if str(u.get('STATUS','')).upper() != 'ATIVO']
+            if pendentes:
+                for row_idx in pendentes: sheet_u_escrita.update_cell(row_idx, 8, "ATIVO")
+                st.cache_data.clear(); st.success("Todos os usuários foram ativados!"); st.rerun()
+            else: st.info("Não há usuários para ativar.")
+
         for i, user in enumerate(records_u):
-            with st.expander(f"{user.get('Graduação')} {user.get('Nome')} - {user.get('STATUS')}"):
-                c1, c2, c3 = st.columns([2, 1, 1])
-                c1.write(f"📧 {user.get('Email')} | 📱 {user.get('TELEFONE')}")
-                # Toggle Ativo/Inativo
-                is_ativo = user.get('STATUS') == 'ATIVO'
-                if c2.checkbox("Ativo", value=is_ativo, key=f"chk_{i}"):
-                    if not is_ativo: 
-                        sheet_u_escrita.update_cell(i+2, 8, "ATIVO")
+            nome_u = str(user.get('Nome','')).lower()
+            email_u = str(user.get('Email','')).lower()
+            
+            if busca == "" or busca in nome_u or busca in email_u:
+                with st.expander(f"{user.get('Graduação')} {user.get('Nome')} - {user.get('STATUS')}"):
+                    c1, c2, c3 = st.columns([2, 1, 1])
+                    c1.write(f"📧 {user.get('Email')} | 📱 {user.get('TELEFONE')}")
+                    is_ativo = str(user.get('STATUS')).upper() == 'ATIVO'
+                    if c2.checkbox("Liberar Acesso", value=is_ativo, key=f"chk_{i}"):
+                        if not is_ativo: 
+                            sheet_u_escrita.update_cell(i+2, 8, "ATIVO")
+                            st.cache_data.clear(); st.rerun()
+                    else:
+                        if is_ativo:
+                            sheet_u_escrita.update_cell(i+2, 8, "INATIVO")
+                            st.cache_data.clear(); st.rerun()
+                    if c3.button("🗑️ EXCLUIR", key=f"del_{i}"):
+                        sheet_u_escrita.delete_rows(i+2)
                         st.cache_data.clear(); st.rerun()
-                else:
-                    if is_ativo:
-                        sheet_u_escrita.update_cell(i+2, 8, "INATIVO")
-                        st.cache_data.clear(); st.rerun()
-                
-                if c3.button("EXCLUIR", key=f"del_{i}"):
-                    sheet_u_escrita.delete_rows(i+2)
-                    st.cache_data.clear(); st.rerun()
 
     else:
+        # BARRA LATERAL RESTAURADA
         u = st.session_state.usuario_logado
-        st.sidebar.markdown(f"### 👤 {u.get('Graduação')} {u.get('Nome')}")
+        st.sidebar.markdown("### 👤 Usuário Conectado")
+        st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
         if st.sidebar.button("Sair", use_container_width=True): st.session_state.usuario_logado = None; st.rerun()
+        st.sidebar.markdown("---")
+        st.sidebar.caption("Desenvolvido por:")
+        st.sidebar.write("MAJ ANDRÉ AGUIAR - CAES")
         
         df_o, df_v = pd.DataFrame(), pd.DataFrame()
         ja, pos = False, 999
@@ -225,7 +245,7 @@ try:
         elif aberto:
             if st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True):
                 agora = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
-                sheet_p_escrita.append_row([agora, u.get('QG_RMCF_OUTROS') or "QG", u.get('Graduação'), u.get('Nome'), u.get('Lotação'), u.get('Email')])
+                sheet_p_escrita.append_row([agora, u.get('ORIGEM') or "QG", u.get('Graduação'), u.get('Nome'), u.get('Lotação'), u.get('Email')])
                 st.cache_data.clear(); st.rerun()
         else: st.info("⌛ Lista fechada para novas inscrições.")
 
@@ -250,7 +270,7 @@ try:
                 pdf.cell(190, 10, "LISTA DE PRESENÇA", ln=True, align="C")
                 pdf.ln(5); pdf.set_font("Arial", "B", 8)
                 headers = ["Nº", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]; col_widths = [15, 25, 80, 70]
-                for i, h in enumerate(headers): pdf.cell(col_widths[i], 8, h, border=1, align="C")
+                for h_idx, h in enumerate(headers): pdf.cell(col_widths[h_idx], 8, h, border=1, align="C")
                 pdf.ln(); pdf.set_font("Arial", "", 8)
                 for _, r in df_o.iterrows():
                     pdf.cell(col_widths[0], 8, str(r['Nº']), border=1, align="C")
