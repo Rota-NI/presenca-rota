@@ -139,7 +139,7 @@ try:
                 st.caption("2. Role para baixo e selecione 'Adicionar à Tela de Início'.")
             
             st.divider()
-            st.info("**Cadastro e Login:** Use seu e-mail como identificador único.")
+            st.info("**CADASTRO E LOGIN:** Use seu e-mail como identificador único.")
             st.markdown("""
             **1. Regras de Horário:**
             * **Manhã:** Inscrições abertas até às 05:00h.
