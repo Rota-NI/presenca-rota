@@ -116,7 +116,11 @@ try:
                 l_e, l_s = st.text_input("E-mail:"), st.text_input("Senha:", type="password")
                 if st.form_submit_button("ENTRAR", use_container_width=True):
                     u_a = next((u for u in records_u if str(u.get('Email','')).strip().lower() == l_e.strip().lower() and str(u.get('Senha','')) == str(l_s)), None)
-                    if u_a: st.session_state.usuario_logado = u_a; st.rerun()
+                    if u_a: 
+                        # ALTERAÇÃO SOLICITADA: Limpa o cache ao logar para garantir dados zerados/atuais
+                        st.cache_data.clear()
+                        st.session_state.usuario_logado = u_a
+                        st.rerun()
                     else: st.error("E-mail ou senha incorretos.")
         with t2:
             with st.form("form_novo_cadastro"):
@@ -129,7 +133,6 @@ try:
                         doc_escrita.worksheet("Usuarios").append_row([n_n, n_g, n_l, n_p, n_o, n_e])
                         st.cache_data.clear(); st.success("Cadastro realizado!")
         with t3:
-            # INSTRUÇÕES ATUALIZADAS CONFORME SOLICITADO
             st.markdown("### 📖 Guia de Uso")
             st.success("📲 **COMO INSTALAR (TELA INICIAL)**")
             st.markdown("**No Chrome (Android):** Toque nos 3 pontos (⋮) e em 'Instalar Aplicativo'.")
@@ -192,7 +195,6 @@ try:
                             st.cache_data.clear(); st.rerun()
         else: st.info("⌛ Lista fechada para novas inscrições.")
 
-        # Conferência exclusiva (3 primeiros e horários de embarque)
         if ja and pos <= 3 and janela_conf:
             st.divider(); st.subheader("📋 CONFERÊNCIA")
             if st.button("📝 PAINEL", use_container_width=True): st.session_state.conf_ativa = not st.session_state.conf_ativa
@@ -202,7 +204,6 @@ try:
         if dados_p and len(dados_p) > 1:
             st.subheader(f"Presentes ({len(df_o)})")
             if st.button("🔄 ATUALIZAR", use_container_width=True): st.cache_data.clear(); st.rerun()
-            # Tabela em HTML com largura compacta e controlada
             st.write(f'<div class="tabela-responsiva">{df_v.drop(columns=["EMAIL"]).to_html(index=False, justify="center", border=0, escape=False)}</div>', unsafe_allow_html=True)
             
             c1, c2 = st.columns(2)
