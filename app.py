@@ -90,7 +90,7 @@ st.markdown("""<style>
     .footer { text-align: center; font-size: 11px; color: #888; margin-top: 40px; padding: 10px; border-top: 1px solid #eee; }
 </style>""", unsafe_allow_html=True)
 
-st.markdown('<div class="titulo-container"><div class="titulo-responsivo">🚌 ROTA NOVA IGUAÇU 🚌</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="titulo-container"><div class="titulo-responsivo">🚌 ROTA NOVA IGUAÇU</div></div>', unsafe_allow_html=True)
 
 if 'usuario_logado' not in st.session_state: st.session_state.usuario_logado = None
 if 'conf_ativa' not in st.session_state: st.session_state.conf_ativa = False
@@ -102,7 +102,6 @@ try:
     sheet_p_escrita = doc_escrita.sheet1
 
     if st.session_state.usuario_logado is None:
-        # Adicionado campo Instruções ao menu inicial
         t1, t2, t3, t4 = st.tabs(["Login", "Cadastro", "Instruções", "Esqueci a Senha"])
         
         with t1:
@@ -127,20 +126,27 @@ try:
         
         with t3:
             st.markdown("### 📖 Guia de Uso Rápido")
-            st.info("**1. Cadastro e Login:** Use seu e-mail funcional/pessoal como identificador único.")
+            # Adicionado Instruções de Instalação
+            st.success("📲 **COMO INSTALAR NO CELULAR (SEM NAVEGADOR)**")
+            c_inst1, c_inst2 = st.columns(2)
+            with c_inst1:
+                st.markdown("**Android (Chrome):**")
+                st.caption("1. Toque nos 3 pontinhos (⋮) no canto superior.")
+                st.caption("2. Selecione 'Instalar Aplicativo' ou 'Adicionar à tela inicial'.")
+            with c_inst2:
+                st.markdown("**iPhone (Safari):**")
+                st.caption("1. Toque no botão de Compartilhar (quadrado com seta ⬆️).")
+                st.caption("2. Role para baixo e selecione 'Adicionar à Tela de Início'.")
+            
+            st.divider()
+            st.info("**1. Cadastro e Login:** Use seu e-mail como identificador único.")
             st.markdown("""
             **2. Regras de Horário:**
             * **Manhã:** Inscrições abertas até às 05:00h.
             * **Tarde:** Inscrições abertas até às 17:00h.
             * **Finais de Semana:** Abrem domingo às 19:00h.
             
-            **3. Ordenação da Lista:**
-            * A lista é organizada por **Antiguidade (Graduação)**.
-            * Em caso de mesma graduação, prevalece a **Ordem de Inscrição**.
-            * Passageiros a partir da 38ª posição são marcados como **Excedentes (EXC)**.
-            
-            **4. Conferência:**
-            * Nos horários de embarque (05h-07h e 17h-19h), os 3 primeiros da lista acessam o painel de conferência para controle dos passageiros.
+            **3. Ordenação da Lista:** Organizada por Antiguidade e Ordem de Inscrição.
             """)
             
         with t4:
@@ -150,6 +156,7 @@ try:
                 if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')}")
                 else: st.error("E-mail não encontrado.")
     else:
+        # --- ÁREA LOGADA ---
         u = st.session_state.usuario_logado
         st.sidebar.markdown("### 👤 Usuário Conectado")
         st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
