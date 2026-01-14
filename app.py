@@ -199,25 +199,29 @@ try:
                         time_module.sleep(3)
                         st.cache_data.clear(); st.rerun()
         with c_adm2:
-            # BOTÃO DE ATUALIZAÇÃO MANUAL SOLICITADO
             if st.button("🔄 SINCRONIZAR STATUS", use_container_width=True):
                 st.cache_data.clear(); st.rerun()
 
+        # LOGICA DE SINCRONIZAÇÃO DENTRO DO EXPANDER (CORRIGIDO)
         for i, user in enumerate(records_u):
             nome_u, email_u = str(user.get('Nome','')).lower(), str(user.get('Email','')).lower()
             if busca == "" or busca in nome_u or busca in email_u:
-                with st.expander(f"{user.get('Graduação')} {user.get('Nome')} - {user.get('STATUS')}"):
+                status_atual = str(user.get('STATUS')).upper()
+                is_ativo = (status_atual == 'ATIVO')
+                
+                with st.expander(f"{user.get('Graduação')} {user.get('Nome')} - {status_atual}"):
                     c1, c2, c3 = st.columns([2, 1, 1])
                     c1.write(f"📧 {user.get('Email')} | 📱 {user.get('TELEFONE')}")
-                    is_ativo = str(user.get('STATUS')).upper() == 'ATIVO'
-                    if c2.checkbox("Liberar", value=is_ativo, key=f"adm_chk_{i}"):
-                        if not is_ativo: 
-                            sheet_u_escrita.update_cell(i+2, 8, "ATIVO")
-                            st.cache_data.clear(); st.rerun()
-                    else:
-                        if is_ativo:
-                            sheet_u_escrita.update_cell(i+2, 8, "INATIVO")
-                            st.cache_data.clear(); st.rerun()
+                    
+                    # Checkbox que detecta a mudança e salva imediatamente
+                    escolha = c2.checkbox("Liberar", value=is_ativo, key=f"adm_chk_{i}")
+                    
+                    if escolha != is_ativo:
+                        novo_status = "ATIVO" if escolha else "INATIVO"
+                        sheet_u_escrita.update_cell(i+2, 8, novo_status)
+                        st.cache_data.clear()
+                        st.rerun() # Força a atualização visual do tique
+                        
                     if c3.button("🗑️", key=f"del_{i}"):
                         sheet_u_escrita.delete_rows(i+2); st.cache_data.clear(); st.rerun()
 
