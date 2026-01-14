@@ -619,7 +619,7 @@ try:
                     buscar_presenca_atualizada.clear()
                     st.rerun()
             with c_up2:
-                st.caption("Atualiza sob demanda (evita 429).")
+                st.caption("Atualiza sob demanda.")
 
             st.write(
                 f"<div class='tabela-responsiva'>{df_v.drop(columns=['EMAIL']).to_html(index=False, justify='center', border=0, escape=False)}</div>",
