@@ -17,7 +17,8 @@ def conectar_gsheets():
     creds = Credentials.from_service_account_info(info, scopes=scope)
     return gspread.authorize(creds)
 
-@st.cache_data(ttl=60)
+# OTIMIZAÇÃO: Cache curtíssimo para garantir que o login veja o status "ATIVO" imediato
+@st.cache_data(ttl=2)
 def buscar_usuarios_cadastrados():
     try:
         client = conectar_gsheets()
@@ -25,7 +26,7 @@ def buscar_usuarios_cadastrados():
         return sheet_u.get_all_records()
     except: return []
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=5)
 def buscar_limite_dinamico():
     try:
         client = conectar_gsheets()
@@ -34,11 +35,10 @@ def buscar_limite_dinamico():
         except:
             sheet_c = doc.add_worksheet(title="Config", rows="10", cols="5")
             sheet_c.update('A1:A2', [['LIMITE'], ['100']]) 
-        val = sheet_c.acell('A2').value
-        return int(val) if val else 100
+        return int(sheet_c.acell('A2').value)
     except: return 100
 
-@st.cache_data(ttl=15)
+@st.cache_data(ttl=10)
 def buscar_presenca_atualizada():
     try:
         client = conectar_gsheets()
@@ -122,14 +122,17 @@ try:
             with st.form("form_login"):
                 l_e, l_t, l_s = st.text_input("E-mail:"), st.text_input("Telefone:"), st.text_input("Senha:", type="password")
                 if st.form_submit_button("ENTRAR", use_container_width=True):
+                    # Validação explícita de status antes de logar
                     u_a = next((u for u in records_u if str(u.get('Email','')).strip().lower() == l_e.strip().lower() and str(u.get('Senha','')) == str(l_s) and str(u.get('TELEFONE','')).strip() == l_t.strip()), None)
                     if u_a:
-                        if str(u_a.get('STATUS','')).strip().upper() == 'ATIVO':
+                        status_user = str(u_a.get('STATUS','')).strip().upper()
+                        if status_user == 'ATIVO':
                             st.session_state.usuario_logado = u_a; st.rerun()
-                        else: st.error("Acesso bloqueado. Aguardando aprovação do Administrador.")
+                        else:
+                            st.error("Acesso negado. Aguardando aprovação do Administrador.")
                     else: st.error("Dados incorretos.")
         with t2:
-            if len(records_u) >= limite_max: st.warning(f"⚠️ Limite de {limite_max} atingido.")
+            if len(records_u) >= limite_max: st.warning(f"⚠️ Limite de {limite_max} usuários atingido.")
             else:
                 with st.form("form_novo_cadastro"):
                     n_n, n_e, n_t = st.text_input("Nome de Escala:"), st.text_input("E-mail:"), st.text_input("Telefone:")
@@ -165,43 +168,56 @@ try:
             if st.button("RECUPERAR DADOS", use_container_width=True):
                 u_r = next((u for u in records_u if str(u.get('Email', '')).strip().lower() == e_r.strip().lower()), None)
                 if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')} | Tel: {u_r.get('TELEFONE')}")
+                else: st.error("E-mail não encontrado.")
         with t5:
             with st.form("form_admin"):
                 ad_u, ad_s = st.text_input("Usuário ADM:"), st.text_input("Senha ADM:", type="password")
                 if st.form_submit_button("ACESSAR PAINEL"):
                     if ad_u == "Administrador" and ad_s == "Administrador@123":
-                        st.session_state.is_admin = True; st.rerun()
+                        st.session_state.is_admin = True; st.cache_data.clear(); st.rerun()
                     else: st.error("ADM inválido.")
 
     elif st.session_state.is_admin:
         st.header("🛡️ PAINEL ADMINISTRATIVO")
-        if st.button("⬅️ SAIR"): st.session_state.is_admin = False; st.rerun()
-        novo_limite = st.number_input("Limite de usuários:", value=limite_max)
-        if st.button("💾 SALVAR LIMITE"):
+        if st.button("⬅️ SAIR DO PAINEL"): st.session_state.is_admin = False; st.rerun()
+        st.subheader("⚙️ Configurações Globais")
+        novo_limite = st.number_input("Limite máximo de usuários:", value=limite_max)
+        if st.button("💾 SALVAR NOVO LIMITE"):
             doc_escrita.worksheet("Config").update('A2', [[str(novo_limite)]])
-            st.cache_data.clear(); st.success("Limite salvo!"); st.rerun()
-        st.divider(); busca = st.text_input("🔍 Pesquisar por Nome ou E-mail:").strip().lower()
-        if st.button("✅ ATIVAR TODOS E DESLOGAR"):
+            st.cache_data.clear(); st.success("Limite atualizado!"); st.rerun()
+
+        st.divider(); st.subheader("👥 Gestão de Usuários")
+        busca = st.text_input("🔍 Pesquisar por Nome ou E-mail:").strip().lower()
+        
+        if st.button("✅ ATIVAR TODOS E DESLOGAR", use_container_width=True):
             if records_u:
                 sheet_u_escrita.update(f'H2:H{len(records_u)+1}', [["ATIVO"]] * len(records_u))
                 time_module.sleep(3); st.cache_data.clear(); st.session_state.clear(); st.rerun()
+
         for i, user in enumerate(records_u):
             if busca == "" or busca in str(user.get('Nome','')).lower() or busca in str(user.get('Email','')).lower():
                 status = str(user.get('STATUS')).upper()
-                with st.expander(f"{user.get('Nome')} - {status}"):
+                with st.expander(f"{user.get('Graduação')} {user.get('Nome')} - {status}"):
                     c1, c2, c3 = st.columns([2, 1, 1])
                     c1.write(f"📧 {user.get('Email')} | 📱 {user.get('TELEFONE')}")
-                    escolha = c2.checkbox("Liberar", value=(status == 'ATIVO'), key=f"adm_chk_{i}")
-                    if escolha != (status == 'ATIVO'):
-                        sheet_u_escrita.update_cell(i+2, 8, "ATIVO" if escolha else "INATIVO")
+                    is_ativo = (status == 'ATIVO')
+                    if c2.checkbox("Liberar", value=is_ativo, key=f"adm_chk_{i}"):
+                        if not is_ativo: 
+                            sheet_u_escrita.update_cell(i+2, 8, "ATIVO")
+                            st.cache_data.clear(); st.rerun()
+                    elif is_ativo:
+                        sheet_u_escrita.update_cell(i+2, 8, "INATIVO")
                         st.cache_data.clear(); st.rerun()
                     if c3.button("🗑️", key=f"del_{i}"):
                         sheet_u_escrita.delete_rows(i+2); st.cache_data.clear(); st.rerun()
 
     else:
         u = st.session_state.usuario_logado
-        st.sidebar.markdown(f"### 👤 {u.get('Graduação')} {u.get('Nome')}")
-        if st.sidebar.button("Sair"): st.session_state.clear(); st.rerun()
+        st.sidebar.markdown(f"### 👤 Usuário Conectado")
+        st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
+        if st.sidebar.button("Sair", use_container_width=True): 
+            for key in list(st.session_state.keys()): del st.session_state[key]
+            st.rerun()
         st.sidebar.markdown("---")
         st.sidebar.caption("Desenvolvido por: MAJ ANDRÉ AGUIAR - CAES")
 
@@ -218,7 +234,8 @@ try:
             if st.button("❌ EXCLUIR MINHA ASSINATURA", use_container_width=True):
                 for idx, r in enumerate(dados_p):
                     if len(r) >= 6 and str(r[5]).strip().lower() == email_logado:
-                        sheet_p_escrita.delete_rows(idx + 1); time_module.sleep(1); st.cache_data.clear(); st.rerun()
+                        sheet_p_escrita.delete_rows(idx + 1)
+                        time_module.sleep(1); st.cache_data.clear(); st.rerun()
         elif aberto:
             if st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True):
                 agora = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
@@ -228,14 +245,14 @@ try:
 
         if ja and pos <= 3 and janela_conf:
             st.divider(); st.subheader("📋 CONFERÊNCIA")
-            if st.button("📝 PAINEL"): st.session_state.conf_ativa = not st.session_state.conf_ativa
+            if st.button("📝 PAINEL", use_container_width=True): st.session_state.conf_ativa = not st.session_state.conf_ativa
             if st.session_state.conf_ativa:
                 for i, row in df_o.iterrows(): st.checkbox(f"{row['Nº']} - {row.get('NOME')}", key=f"chk_p_{i}")
 
         if dados_p and len(dados_p) > 1:
             insc = len(df_o); rest = 38 - insc
             st.subheader(f"Inscritos: {insc} | Vagas: 38 | {'Sobra' if rest >= 0 else 'Exc'}: {abs(rest)}")
-            if st.button("🔄 ATUALIZAR"): st.cache_data.clear(); st.rerun()
+            if st.button("🔄 ATUALIZAR", use_container_width=True): st.cache_data.clear(); st.rerun()
             st.write(f'<div class="tabela-responsiva">{df_v.drop(columns=["EMAIL"]).to_html(index=False, justify="center", border=0, escape=False)}</div>', unsafe_allow_html=True)
             
             c1, c2 = st.columns(2)
