@@ -2,7 +2,7 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 import pytz
 from fpdf import FPDF
 
@@ -14,71 +14,72 @@ def conectar():
     client = gspread.authorize(creds)
     return client.open("ListaPresenca").sheet1
 
-# --- LÓGICA DE HORÁRIO ---
-def verificar_acesso():
+# --- LÓGICA DE HORÁRIO E LIMPEZA ---
+def verificar_status():
     fuso_br = pytz.timezone('America/Sao_Paulo')
     agora = datetime.now(fuso_br)
-    dia_semana = agora.weekday() # 0=Segunda, 6=Domingo
+    dia_semana = agora.weekday()
     hora_atual = agora.time()
 
     aberto = False
+    # Janelas de abertura para limpeza (10 min antes)
+    # Turno 07:00 -> Limpa entre 06:50 e 06:59
+    # Turno 19:00 -> Limpa entre 18:50 e 18:59
+    precisa_limpar = (time(6, 50) <= hora_atual <= time(6, 59)) or (time(18, 50) <= hora_atual <= time(18, 59))
 
-    # Domingo (6): Abre às 19:00 e vai até meia-noite
-    if dia_semana == 6:
-        if hora_atual >= time(19, 0):
-            aberto = True
-    
-    # Segunda (0), Terça (1), Quarta (2), Quinta (3)
-    elif dia_semana in [0, 1, 2, 3]:
-        # Madrugada do dia anterior (até 05:00) OU 07:00 às 17:00 OU 19:00 em diante
+    # Regras de Horário
+    if dia_semana == 6: # Dom
+        if hora_atual >= time(19, 0): aberto = True
+    elif dia_semana in [0, 1, 2, 3]: # Seg a Qui
         if hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(17, 0) or hora_atual >= time(19, 0):
             aberto = True
-
-    # Sexta (4)
-    elif dia_semana == 4:
-        # Madrugada de quinta (até 05:00) OU 07:00 às 17:00
+    elif dia_semana == 4: # Sex
         if hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(17, 0):
             aberto = True
-            
-    # Sábado (5)
-    elif dia_semana == 5:
-        # Madrugada de sexta (até 05:00)
-        if hora_atual <= time(5, 0):
-            aberto = True
+    elif dia_semana == 5: # Sab
+        if hora_atual <= time(5, 0): aberto = True
 
-    return aberto
+    return aberto, precisa_limpar
 
-# --- FUNÇÃO PARA GERAR PDF ---
-def gerar_pdf(df):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(190, 10, "LISTA DE PRESENÇA - ROTA NOVA IGUAÇU", ln=True, align="C")
-    pdf.ln(10)
+# --- FUNÇÃO DE ORDENAÇÃO ---
+def ordenar_dados(df):
+    # Ordem de Destino
+    ordem_destino = {"QG": 0, "RMCF": 1, "OUTROS": 2}
     
-    pdf.set_font("Arial", "B", 10)
-    col_widths = [40, 25, 25, 60, 40]
-    headers = ["DATA/HORA", "DESTINO", "GRAD.", "NOME", "LOTAÇÃO"]
+    # Ordem de Graduação (FCs ficam por último na hierarquia)
+    ordem_grad = {
+        "TCEL": 0, "MAJ": 1, "CAP": 2, "1º TEN": 3, "2º TEN": 4, 
+        "SUBTEN": 5, "1º SGT": 6, "2º SGT": 7, "3º SGT": 8, "CB": 9, "SD": 10,
+        "FC COM": 11, "FC TER": 12
+    }
     
-    for i, header in enumerate(headers):
-        pdf.cell(col_widths[i], 10, header, border=1, align="C")
-    pdf.ln()
+    # Criar colunas temporárias para ordenar
+    df['peso_destino'] = df['DESTINO'].map(ordem_destino).fillna(3)
+    df['peso_grad'] = df['GRAD.'].map(ordem_grad).fillna(13)
+    # Converter data/hora para permitir ordenação cronológica
+    df['dt_temp'] = pd.to_datetime(df['DATA/HORA'], dayfirst=True)
     
-    pdf.set_font("Arial", "", 9)
-    for index, row in df.iterrows():
-        for i in range(len(headers)):
-            pdf.cell(col_widths[i], 10, str(row[i]), border=1)
-        pdf.ln()
-        
-    return pdf.output(dest="S").encode("latin-1")
+    # Ordenar: 1º Destino, 2º Graduação, 3º Data/Hora
+    df = df.sort_values(by=['peso_destino', 'peso_grad', 'dt_temp']).reset_index(drop=True)
+    
+    return df.drop(columns=['peso_destino', 'peso_grad', 'dt_temp'])
 
-# --- INTERFACE ---
+# --- TÍTULO ---
 st.markdown("<h1 style='text-align: center;'>🚌 ROTA NOVA IGUAÇU</h1>", unsafe_allow_html=True)
 
 try:
-    if verificar_acesso():
-        sheet = conectar()
-        
+    sheet = conectar()
+    esta_aberto, deve_limpar = verificar_status()
+
+    # Executa limpeza se estiver no horário (06:50 ou 18:50)
+    if deve_limpar:
+        # Pega todos os dados; se tiver mais que o cabeçalho, apaga.
+        if len(sheet.get_all_values()) > 1:
+            sheet.resize(rows=1)
+            sheet.resize(rows=100) # Mantém espaço para novos dados
+            st.info("🧹 Sistema em manutenção: Limpando lista para o novo turno...")
+
+    if esta_aberto:
         with st.form("meu_formulario", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
@@ -90,7 +91,7 @@ try:
             with col2:
                 nome = st.text_input("Nome de Escala:")
                 lotacao = st.text_input("Lotação (Unidade):")
-                
+            
             submit = st.form_submit_button("SALVAR PRESENÇA")
             
             if submit:
@@ -103,27 +104,39 @@ try:
                 else:
                     st.error("Por favor, preencha o Nome e a Lotação.")
     else:
-        st.warning("⚠️ O sistema está fora do horário de funcionamento.")
-        st.info("Horários: Dom 19h às Seg 05h | Seg-Qui: 07h-17h e 19h-05h | Sex: 07h-17h")
+        st.warning("⚠️ O formulário está fechado. Apenas consulta disponível.")
 
-    # --- TABELA E PDF (Sempre disponíveis para consulta) ---
+    # --- TABELA E PDF ---
     st.subheader("Pessoas Presentes")
-    sheet_consulta = conectar()
-    dados = sheet_consulta.get_all_values()
-    
+    dados = sheet.get_all_values()
     if len(dados) > 1:
         df = pd.DataFrame(dados[1:], columns=dados[0])
-        st.table(df)
+        # Aplicar a ordenação solicitada
+        df_ordenado = ordenar_dados(df)
+        st.table(df_ordenado)
         
-        pdf_data = gerar_pdf(df)
-        st.download_button(
-            label="📄 BAIXAR LISTA EM PDF",
-            data=pdf_data,
-            file_name=f"presenca_rota_{datetime.now().strftime('%Y%m%d')}.pdf",
-            mime="application/pdf"
-        )
+        # Função para PDF (Interna para garantir dados ordenados)
+        def gerar_pdf_ordenado(df_pdf):
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", "B", 14)
+            pdf.cell(190, 10, "LISTA DE PRESENÇA - ROTA NOVA IGUAÇU", ln=True, align="C")
+            pdf.ln(5)
+            pdf.set_font("Arial", "B", 8)
+            col_w = [35, 20, 20, 70, 45]
+            headers = ["DATA/HORA", "DESTINO", "GRAD.", "NOME", "LOTAÇÃO"]
+            for i, h in enumerate(headers): pdf.cell(col_w[i], 8, h, border=1, align="C")
+            pdf.ln()
+            pdf.set_font("Arial", "", 8)
+            for _, row in df_pdf.iterrows():
+                for i in range(5): pdf.cell(col_w[i], 8, str(row[i]), border=1)
+                pdf.ln()
+            return pdf.output(dest="S").encode("latin-1")
+
+        pdf_bytes = gerar_pdf_ordenado(df_ordenado)
+        st.download_button("📄 BAIXAR LISTA EM PDF", pdf_bytes, f"presenca_{datetime.now().strftime('%d_%m_%Hh')}.pdf", "application/pdf")
     else:
         st.info("Nenhuma presença registrada ainda.")
 
 except Exception as e:
-    st.error(f"Erro de conexão ou configuração: {e}")
+    st.error(f"Erro: {e}")
