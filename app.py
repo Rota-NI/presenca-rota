@@ -87,7 +87,7 @@ st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered")
 # Script de Integração Telegram
 st.markdown('<script src="https://telegram.org/js/telegram-web-app.js"></script>', unsafe_allow_html=True)
 
-# CSS Ajustado EXCLUSIVAMENTE para comprimir a tabela
+# Estilos CSS (Largura Compacta da Tabela)
 st.markdown("""<style>
     .titulo-container { text-align: center; width: 100%; }
     .titulo-responsivo { font-size: clamp(1.2rem, 5vw, 2.2rem); font-weight: bold; margin-bottom: 20px; }
@@ -129,15 +129,19 @@ try:
                         doc_escrita.worksheet("Usuarios").append_row([n_n, n_g, n_l, n_p, n_o, n_e])
                         st.cache_data.clear(); st.success("Cadastro realizado!")
         with t3:
-            st.markdown("### 📖 Guia de Uso Rápido")
-            st.info("**1. Cadastro e Login:** Use seu e-mail funcional/pessoal como identificador único.")
+            # INSTRUÇÕES ATUALIZADAS CONFORME SOLICITADO
+            st.markdown("### 📖 Guia de Uso")
+            st.success("📲 **COMO INSTALAR (TELA INICIAL)**")
+            st.markdown("**No Chrome (Android):** Toque nos 3 pontos (⋮) e em 'Instalar Aplicativo'.")
+            st.markdown("**No Safari (iPhone):** Toque em Compartilhar (⬆️) e em 'Adicionar à Tela de Início'.")
+            st.markdown("**No Telegram:** Procure o bot `@RotaNovaIguacuBot` e toque no botão 'Abrir App Rota' no menu.")
+            st.divider()
+            st.info("**1. Cadastro e Login:** Use seu e-mail como identificador único.")
             st.markdown("""
             **2. Regras de Horário:**
             * **Manhã:** Inscrições abertas até às 05:00h.
             * **Tarde:** Inscrições abertas até às 17:00h.
             * **Finais de Semana:** Abrem domingo às 19:00h.
-            
-            **3. Ordenação da Lista:** Organizada por Graduação e Ordem de Inscrição.
             """)
         with t4:
             e_r = st.text_input("E-mail cadastrado:")
@@ -182,6 +186,7 @@ try:
                             st.cache_data.clear(); st.rerun()
         else: st.info("⌛ Lista fechada para novas inscrições.")
 
+        # Conferência exclusiva (3 primeiros e horários de embarque)
         if ja and pos <= 3 and janela_conf:
             st.divider(); st.subheader("📋 CONFERÊNCIA")
             if st.button("📝 PAINEL", use_container_width=True): st.session_state.conf_ativa = not st.session_state.conf_ativa
@@ -191,7 +196,7 @@ try:
         if dados_p and len(dados_p) > 1:
             st.subheader(f"Presentes ({len(df_o)})")
             if st.button("🔄 ATUALIZAR", use_container_width=True): st.cache_data.clear(); st.rerun()
-            # Tabela em HTML com largura controlada
+            # Tabela em HTML com largura compacta e controlada
             st.write(f'<div class="tabela-responsiva">{df_v.drop(columns=["EMAIL"]).to_html(index=False, justify="center", border=0, escape=False)}</div>', unsafe_allow_html=True)
             
             c1, c2 = st.columns(2)
