@@ -4,6 +4,7 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime, time
 import pytz
+from fpdf import FPDF
 
 # --- CONFIGURAÇÃO DE ACESSO ---
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -31,7 +32,6 @@ def verificar_status():
     return aberto, deve_limpar
 
 def aplicar_ordenacao_e_numeracao(df):
-    # Padroniza a coluna de destino
     if 'QG_RMCF_OUT' in df.columns:
         df = df.rename(columns={'QG_RMCF_OUT': 'QG_RMCF_OUTROS'})
     
@@ -45,10 +45,7 @@ def aplicar_ordenacao_e_numeracao(df):
     df['p_grad'] = df['GRADUAÇÃO'].map(peso_grad).fillna(999)
     df['dt_temp'] = pd.to_datetime(df['DATA_HORA'], dayfirst=True)
     
-    # Ordenação correta
     df = df.sort_values(by=['is_fc', 'p_dest', 'p_grad', 'dt_temp']).reset_index(drop=True)
-    
-    # Numeração oficial começando em 1
     df.insert(0, 'Nº', [str(i+1) if i < 38 else f"Exc-{i-37:02d}" for i in range(len(df))])
     
     return df.drop(columns=['is_fc', 'p_dest', 'p_grad', 'dt_temp'])
@@ -120,10 +117,27 @@ try:
             df = aplicar_ordenacao_e_numeracao(pd.DataFrame(dados_p[1:], columns=dados_p[0]))
             st.subheader(f"Pessoas Presentes ({len(df)})")
             
-            # --- SOLUÇÃO FINAL ---
-            # Para ocultar o índice 0, 1, 2 no st.table, precisamos converter para HTML
-            # Isso garante que a lista apareça TODA na tela sem barra de rolagem
+            # Exibição HTML para ocultar índice e mostrar lista completa
             st.write(df.to_html(index=False, justify='center', border=0), unsafe_allow_html=True)
+            
+            # --- GERAÇÃO DO PDF ---
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", "B", 14)
+            pdf.cell(190, 10, "LISTA DE PRESENÇA - ROTA NOVA IGUAÇU", ln=True, align="C")
+            pdf.set_font("Arial", "B", 8)
+            w = [12, 30, 20, 25, 63, 40]
+            headers = ["Nº", "DATA_HORA", "DESTINO", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
+            for i, h in enumerate(headers): pdf.cell(w[i], 8, h, border=1, align="C")
+            pdf.ln()
+            
+            pdf.set_font("Arial", "", 8)
+            for _, r in df.iterrows():
+                for i in range(len(headers)): 
+                    pdf.cell(w[i], 8, str(r[i]), border=1)
+                pdf.ln()
+            
+            st.download_button("📄 BAIXAR LISTA EM PDF", pdf.output(dest="S").encode("latin-1"), f"lista_{datetime.now().strftime('%Hh%M')}.pdf", "application/pdf")
             
             if ja and st.button("❌ EXCLUIR MINHA ASSINATURA"):
                 for idx, r in enumerate(dados_p):
