@@ -190,22 +190,22 @@ try:
         
         c_adm1, c_adm2 = st.columns(2)
         with c_adm1:
-            # CORREÇÃO DEFINITIVA: Limpa chaves de checkbox para forçar sincronização visual
             if st.button("✅ ATIVAR TODOS", use_container_width=True):
-                with st.spinner("Ativando e Sincronizando..."):
+                with st.spinner("Sincronizando..."):
                     num = len(records_u)
                     if num > 0:
-                        # 1. Atualiza no Banco
                         status_list = [["ATIVO"]] * num
                         sheet_u_escrita.update(f'H2:H{num+1}', status_list)
-                        # 2. Limpa o estado visual dos checkboxes antigos
+                        time_module.sleep(3)
+                        # LIMPEZA DE ESTADO COMPLETA PARA RELOAD IDENTICO AO LOGIN
                         for key in list(st.session_state.keys()):
                             if key.startswith("adm_chk_"): del st.session_state[key]
-                        # 3. Pausa para o Google consolidar e reinicia
-                        time_module.sleep(3)
                         st.cache_data.clear(); st.rerun()
         with c_adm2:
+            # RELOAD IDÊNTICO AO ACESSO INICIAL
             if st.button("🔄 SINCRONIZAR STATUS", use_container_width=True):
+                for key in list(st.session_state.keys()):
+                    if key.startswith("adm_chk_"): del st.session_state[key]
                 st.cache_data.clear(); st.rerun()
 
         for i, user in enumerate(records_u):
@@ -218,14 +218,11 @@ try:
                     c1, c2, c3 = st.columns([2, 1, 1])
                     c1.write(f"📧 {user.get('Email')} | 📱 {user.get('TELEFONE')}")
                     
-                    # Chave estável para o checkbox individual
                     escolha = c2.checkbox("Liberar", value=is_ativo, key=f"adm_chk_{i}")
-                    
                     if escolha != is_ativo:
                         novo_status = "ATIVO" if escolha else "INATIVO"
                         sheet_u_escrita.update_cell(i+2, 8, novo_status)
-                        st.cache_data.clear()
-                        st.rerun()
+                        st.cache_data.clear(); st.rerun()
                         
                     if c3.button("🗑️", key=f"del_{i}"):
                         sheet_u_escrita.delete_rows(i+2); st.cache_data.clear(); st.rerun()
@@ -254,7 +251,7 @@ try:
         elif aberto:
             if st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True):
                 agora = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
-                sheet_p_escrita.append_row([agora, u.get('ORIGEM') or "QG", u.get('Graduação'), u.get('Nome'), u.get('Lotação'), u.get('Email')])
+                sheet_p_escrita.append_row([agora, u.get('QG_RMCF_OUTROS') or "QG", u.get('Graduação'), u.get('Nome'), u.get('Lotação'), u.get('Email')])
                 st.cache_data.clear(); st.rerun()
         else: st.info("⌛ Lista fechada para novas inscrições.")
 
