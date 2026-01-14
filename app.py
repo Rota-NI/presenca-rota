@@ -146,7 +146,7 @@ try:
             * **Tarde:** Inscrições abertas até às 17:00h.
             * **Finais de Semana:** Abrem domingo às 19:00h.
             
-            **2. Ordenação da Lista:** Organizada por Antiguidade, primeira mente para os PPMM do QG; depois para o RMCF e, após para OUTROS, bem como para os FC COM e FC TER será o horário para a Ordem de Inscrição.
+            **2. Ordenação da Lista:** Organizada por Antiguidade, primeira mente para os PPMM do QG; depois para o RMCF e, após para OUTROS, bem como para os FC COM e FC TER será, respectivamente, o horário para a Ordem de Inscrição.
             """)
             
         with t4:
