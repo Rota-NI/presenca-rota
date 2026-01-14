@@ -118,6 +118,7 @@ try:
             df = aplicar_ordenacao_e_numeracao(pd.DataFrame(dados_p[1:], columns=dados_p[0]))
             st.subheader(f"Pessoas Presentes ({len(df)})")
             
+            # Exibição HTML
             st.write(df.to_html(index=False, justify='center', border=0), unsafe_allow_html=True)
             
             # --- BOTÕES DE EXPORTAÇÃO ---
@@ -141,15 +142,16 @@ try:
                 st.download_button("📄 BAIXAR PDF", pdf.output(dest="S").encode("latin-1"), f"lista_{datetime.now().strftime('%Hh%M')}.pdf", "application/pdf")
             
             with col_wpp:
-                # GERAÇÃO DO RESUMO WHATSAPP
+                # GERAÇÃO DO RESUMO WHATSAPP COM LOTAÇÃO
                 agora_formatado = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y às %H:%M')
                 texto_wpp = f"*🚌 LISTA DE PRESENÇA - ROTA NOVA IGUAÇU*\n_Atualizada em {agora_formatado}_\n\n"
                 for _, r in df.iterrows():
-                    texto_wpp += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']} ({r['QG_RMCF_OUTROS']})\n"
+                    # Alterado para mostrar a Lotação ao invés do Destino
+                    texto_wpp += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']} ({r['LOTAÇÃO']})\n"
                 
                 texto_url = urllib.parse.quote(texto_wpp)
                 link_wpp = f"https://wa.me/?text={texto_url}"
-                st.markdown(f'<a href="{link_wpp}" target="_blank"><button style="width:100%; height:38px; background-color:#25D366; color:white; border:none; border-radius:4px; cursor:pointer;">🟢 ENVIAR WHATSAPP</button></a>', unsafe_allow_html=True)
+                st.markdown(f'<a href="{link_wpp}" target="_blank"><button style="width:100%; height:38px; background-color:#25D366; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">🟢 ENVIAR WHATSAPP</button></a>', unsafe_allow_html=True)
 
             if ja and st.button("❌ EXCLUIR MINHA ASSINATURA"):
                 for idx, r in enumerate(dados_p):
