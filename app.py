@@ -104,14 +104,10 @@ if 'usuario_logado' not in st.session_state: st.session_state.usuario_logado = N
 if 'conf_ativa' not in st.session_state: st.session_state.conf_ativa = False
 
 try:
-    # ALTERAÇÃO TÉCNICA: Ordem de execução prioritária para limpeza antes da leitura
+    # Ordem de execução prioritária para limpeza
     doc_escrita = conectar_escrita_direta()
     sheet_p_escrita = doc_escrita.sheet1
-    
-    # Busca dados atuais para conferência de limpeza imediata
     dados_p = buscar_presenca_atualizada()
-    
-    # Executa limpeza se o horário permitir ANTES de carregar o restante da página
     aberto, janela_conf = verificar_status_e_limpar(sheet_p_escrita, dados_p)
     
     records_u = buscar_usuarios_cadastrados()
@@ -126,17 +122,20 @@ try:
                     if u_a: st.session_state.usuario_logado = u_a; st.rerun()
                     else: st.error("E-mail ou senha incorretos.")
         with t2:
-            with st.form("form_novo_cadastro"):
-                n_n, n_e = st.text_input("Nome de Escala:"), st.text_input("E-mail (Login):")
-                n_g = st.selectbox("Graduação:", ["TCEL", "MAJ", "CAP", "1º TEN", "2º TEN", "SUBTEN", "1º SGT", "2º SGT", "3º SGT", "CB", "SD", "FC COM", "FC TER"])
-                n_l, n_o, n_p = st.text_input("Lotação:"), st.selectbox("Origem:", ["QG", "RMCF", "OUTROS"]), st.text_input("Senha:", type="password")
-                if st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True):
-                    if any(str(u.get('Email','')).strip().lower() == n_e.strip().lower() for u in records_u): st.error("E-mail já cadastrado.")
-                    else:
-                        doc_escrita.worksheet("Usuarios").append_row([n_n, n_g, n_l, n_p, n_o, n_e])
-                        st.cache_data.clear(); st.success("Cadastro realizado!")
+            # ALTERAÇÃO: Limite de 100 cadastros
+            if len(records_u) >= 100:
+                st.warning("⚠️ Limite de 100 usuários cadastrados atingido. Contate o administrador.")
+            else:
+                with st.form("form_novo_cadastro"):
+                    n_n, n_e = st.text_input("Nome de Escala:"), st.text_input("E-mail (Login):")
+                    n_g = st.selectbox("Graduação:", ["TCEL", "MAJ", "CAP", "1º TEN", "2º TEN", "SUBTEN", "1º SGT", "2º SGT", "3º SGT", "CB", "SD", "FC COM", "FC TER"])
+                    n_l, n_o, n_p = st.text_input("Lotação:"), st.selectbox("Origem:", ["QG", "RMCF", "OUTROS"]), st.text_input("Senha:", type="password")
+                    if st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True):
+                        if any(str(u.get('Email','')).strip().lower() == n_e.strip().lower() for u in records_u): st.error("E-mail já cadastrado.")
+                        else:
+                            doc_escrita.worksheet("Usuarios").append_row([n_n, n_g, n_l, n_p, n_o, n_e])
+                            st.cache_data.clear(); st.success("Cadastro realizado!")
         with t3:
-            # BLOCO DE INSTRUÇÕES MANTIDO CONFORME SUA PERSONALIZAÇÃO
             st.markdown("### 📖 Guia de Uso")
             st.success("📲 **COMO INSTALAR (TELA INICIAL)**")
             st.markdown("**No Chrome (Android):** Toque nos 3 pontos (⋮) e em 'Instalar Aplicativo'.")
