@@ -35,47 +35,39 @@ def verificar_status():
 
     return aberto, deve_limpar
 
-# --- FUNÇÃO DE ORDENAÇÃO GLOBAL CORRIGIDA ---
+# --- FUNÇÃO DE ORDENAÇÃO GLOBAL ---
 def aplicar_ordenacao(df):
-    # Pesos para Destino (Somente para Militares)
     peso_destino = {"QG": 1, "RMCF": 2, "OUTROS": 3}
-    
-    # Pesos para Graduação
-    # Militares têm pesos baixos (1-11)
-    # FCs têm pesos altos (100+) para jogá-los para o fim da lista total
     peso_grad = {
         "TCEL": 1, "MAJ": 2, "CAP": 3, "1º TEN": 4, "2º TEN": 5, "SUBTEN": 6,
         "1º SGT": 7, "2º SGT": 8, "3º SGT": 9, "CB": 10, "SD": 11,
         "FC COM": 101, "FC TER": 102
     }
-
     col_destino = "QG_RMCF_OUTROS" 
     col_grad = "GRADUAÇÃO"
     col_data = "DATA_HORA"
     
-    # 1. Definir se é Militar ou FC
     df['is_fc'] = df[col_grad].apply(lambda x: 1 if "FC" in str(x) else 0)
-    
-    # 2. Peso do Destino: Se for FC, o destino não conta na prioridade inicial (peso fixo alto)
     df['p_dest'] = df.apply(lambda r: peso_destino.get(r[col_destino], 99) if r['is_fc'] == 0 else 99, axis=1)
-    
-    # 3. Peso da Graduação
     df['p_grad'] = df[col_grad].map(peso_grad).fillna(999)
-    
-    # 4. Data/Hora
     df['dt_temp'] = pd.to_datetime(df[col_data], dayfirst=True)
 
-    # ORDENAÇÃO FINAL:
-    # Primeiro: Militares (is_fc=0) antes de FCs (is_fc=1)
-    # Segundo: Ordem de Destino (apenas militares sentirão isso)
-    # Terceiro: Patente/Graduação
-    # Quarto: Hora de chegada
     df = df.sort_values(by=['is_fc', 'p_dest', 'p_grad', 'dt_temp']).reset_index(drop=True)
-    
     return df.drop(columns=['is_fc', 'p_dest', 'p_grad', 'dt_temp'])
 
 # --- INTERFACE ---
 st.markdown("<h1 style='text-align: center;'>🚌 ROTA NOVA IGUAÇU</h1>", unsafe_allow_html=True)
+
+# --- OBSERVAÇÕES ABAIXO DO TÍTULO ---
+st.caption("Obs. 1: Preencher lista com Posto/Graduação, Nome de escala e lotação.")
+st.caption("""
+Obs. 2: Lista será finalizada e apurada às 5h e 17h, seguindo a ordem de prioridade e de vagas previstas (38 vagas):
+- 1º com os PPMM das OPM sediadas no QG.
+- Em seguida, a lista será complementada com os PPMM das OPMs sediadas no RMCF.
+- Após, serão contemplados os PPMM de outras OPMs; e
+- Por fim, os FC Comissionados do QG, seguidos pelos FC Terceirizados do QG.
+""")
+st.caption("Obs. 3: O embarque no ônibus no 20° BPM e no QG será autorizado mediante a conferência do PM mais antigo, ocorrendo sempre que possível após às 06:20h e 17:20h.")
 
 try:
     sheet = conectar()
