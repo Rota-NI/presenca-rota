@@ -33,7 +33,6 @@ def verificar_status():
     return aberto, deve_limpar
 
 def aplicar_ordenacao_e_numeracao(df):
-    # Padroniza e renomeia para ORIGEM
     if 'QG_RMCF_OUT' in df.columns:
         df = df.rename(columns={'QG_RMCF_OUT': 'ORIGEM'})
     elif 'QG_RMCF_OUTROS' in df.columns:
@@ -86,17 +85,17 @@ try:
                 n_s = st.text_input("Crie uma Senha:", type="password")
                 if st.form_submit_button("Finalizar Cadastro"):
                     sheet_u.append_row([n_n, n_g, n_u, n_s, n_d, n_e])
-                    st.success("Cadastro realizado!")
+                    st.success("Cadastro realizado! Faça o login na primeira aba.")
         with t3:
             e_r = st.text_input("Digite o e-mail cadastrado:")
-            if st.button("Visualizar Dados"):
+            if st.button("Visualizar Meus Dados"):
                 users = sheet_u.get_all_records()
                 u_r = next((u for u in users if str(u.get('Email', '')).strip().lower() == e_r.strip().lower()), None)
                 if u_r: st.info(f"Usuário: {u_r['Nome']} | Senha: {u_r['Senha']}")
                 else: st.error("E-mail não encontrado.")
     else:
         user = st.session_state.usuario_logado
-        st.sidebar.info(f"Conectado: {user['Graduação']} {user['Nome']}")
+        st.sidebar.info(f"PM: {user['Graduação']} {user['Nome']}")
         if st.sidebar.button("Sair"): 
             st.session_state.usuario_logado = None
             st.rerun()
@@ -120,21 +119,16 @@ try:
         if len(dados_p) > 1:
             df = aplicar_ordenacao_e_numeracao(pd.DataFrame(dados_p[1:], columns=dados_p[0]))
             st.subheader(f"Pessoas Presentes ({len(df)})")
-            
-            # Tabela HTML sem índice
             st.write(df.to_html(index=False, justify='center', border=0), unsafe_allow_html=True)
             
             col_pdf, col_wpp = st.columns(2)
-            
             with col_pdf:
-                # PDF com cabeçalho corrigido para ORIGEM
                 pdf = FPDF()
                 pdf.add_page()
                 pdf.set_font("Arial", "B", 14)
                 pdf.cell(190, 10, "LISTA DE PRESENÇA - ROTA NOVA IGUAÇU", ln=True, align="C")
                 pdf.set_font("Arial", "B", 8)
                 w = [12, 30, 20, 25, 63, 40]
-                # Cabeçalho do PDF alterado de DESTINO para ORIGEM
                 headers = ["Nº", "DATA_HORA", "ORIGEM", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
                 for i, h in enumerate(headers): pdf.cell(w[i], 8, h, border=1, align="C")
                 pdf.ln()
@@ -145,12 +139,10 @@ try:
                 st.download_button("📄 BAIXAR PDF", pdf.output(dest="S").encode("latin-1"), f"lista_{datetime.now().strftime('%Hh%M')}.pdf", "application/pdf")
             
             with col_wpp:
-                # Resumo WhatsApp com Lotação
                 agora_formatado = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y às %H:%M')
                 texto_wpp = f"*🚌 LISTA DE PRESENÇA - ROTA NOVA IGUAÇU*\n_Atualizada em {agora_formatado}_\n\n"
                 for _, r in df.iterrows():
                     texto_wpp += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']} ({r['LOTAÇÃO']})\n"
-                
                 texto_url = urllib.parse.quote(texto_wpp)
                 link_wpp = f"https://wa.me/?text={texto_url}"
                 st.markdown(f'<a href="{link_wpp}" target="_blank"><button style="width:100%; height:38px; background-color:#25D366; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">🟢 ENVIAR WHATSAPP</button></a>', unsafe_allow_html=True)
