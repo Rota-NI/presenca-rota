@@ -139,14 +139,14 @@ try:
                 st.caption("2. Role para baixo e selecione 'Adicionar à Tela de Início'.")
             
             st.divider()
-            st.info("**1. Cadastro e Login:** Use seu e-mail como identificador único.")
+            st.info("**Cadastro e Login:** Use seu e-mail como identificador único.")
             st.markdown("""
-            **2. Regras de Horário:**
+            **1. Regras de Horário:**
             * **Manhã:** Inscrições abertas até às 05:00h.
             * **Tarde:** Inscrições abertas até às 17:00h.
             * **Finais de Semana:** Abrem domingo às 19:00h.
             
-            **3. Ordenação da Lista:** Organizada por Antiguidade e Ordem de Inscrição.
+            **2. Ordenação da Lista:** Organizada por Antiguidade, primeira mente para os PPMM do QG; depois para o RMCF e, após para OUTROS, bem como para os FC COM e FC TER será o horário para a Ordem de Inscrição.
             """)
             
         with t4:
