@@ -54,6 +54,7 @@ def aplicar_ordenacao_e_numeracao(df):
     return df.drop(columns=['is_fc', 'p_orig', 'p_grad', 'dt_temp'])
 
 # --- INTERFACE ---
+st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered") # Garante centralização mobile
 st.markdown("<h1 style='text-align: center;'>🚌 ROTA NOVA IGUAÇU</h1>", unsafe_allow_html=True)
 
 if 'usuario_logado' not in st.session_state:
@@ -85,7 +86,7 @@ try:
                 n_s = st.text_input("Crie uma Senha:", type="password")
                 if st.form_submit_button("Finalizar Cadastro"):
                     sheet_u.append_row([n_n, n_g, n_u, n_s, n_d, n_e])
-                    st.success("Cadastro realizado! Faça o login na primeira aba.")
+                    st.success("Cadastro realizado!")
         with t3:
             e_r = st.text_input("Digite o e-mail cadastrado:")
             if st.button("Visualizar Meus Dados"):
@@ -95,7 +96,7 @@ try:
                 else: st.error("E-mail não encontrado.")
     else:
         user = st.session_state.usuario_logado
-        st.sidebar.info(f"PM: {user['Graduação']} {user['Nome']}")
+        st.sidebar.info(f"Conectado: {user['Graduação']} {user['Nome']}")
         if st.sidebar.button("Sair"): 
             st.session_state.usuario_logado = None
             st.rerun()
@@ -109,7 +110,7 @@ try:
         if aberto:
             if not ja:
                 orig_user = user.get('ORIGEM') or user.get('QG_RMCF_OUTROS') or user.get('QG_RMCF_OUT') or "QG"
-                if st.button("🚀 SALVAR MINHA PRESENÇA"):
+                if st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True):
                     agora = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
                     sheet_p.append_row([agora, orig_user, user['Graduação'], user['Nome'], user['Lotação']])
                     st.success("Presença registrada!"); st.rerun()
@@ -119,6 +120,8 @@ try:
         if len(dados_p) > 1:
             df = aplicar_ordenacao_e_numeracao(pd.DataFrame(dados_p[1:], columns=dados_p[0]))
             st.subheader(f"Pessoas Presentes ({len(df)})")
+            
+            # Tabela Responsiva
             st.write(df.to_html(index=False, justify='center', border=0), unsafe_allow_html=True)
             
             col_pdf, col_wpp = st.columns(2)
@@ -136,7 +139,7 @@ try:
                 for _, r in df.iterrows():
                     for i in range(len(headers)): pdf.cell(w[i], 8, str(r[i]), border=1)
                     pdf.ln()
-                st.download_button("📄 BAIXAR PDF", pdf.output(dest="S").encode("latin-1"), f"lista_{datetime.now().strftime('%Hh%M')}.pdf", "application/pdf")
+                st.download_button("📄 BAIXAR PDF", pdf.output(dest="S").encode("latin-1"), f"lista_{datetime.now().strftime('%Hh%M')}.pdf", "application/pdf", use_container_width=True)
             
             with col_wpp:
                 agora_formatado = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y às %H:%M')
@@ -145,9 +148,9 @@ try:
                     texto_wpp += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']} ({r['LOTAÇÃO']})\n"
                 texto_url = urllib.parse.quote(texto_wpp)
                 link_wpp = f"https://wa.me/?text={texto_url}"
-                st.markdown(f'<a href="{link_wpp}" target="_blank"><button style="width:100%; height:38px; background-color:#25D366; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">🟢 ENVIAR WHATSAPP</button></a>', unsafe_allow_html=True)
+                st.markdown(f'<a href="{link_wpp}" target="_blank"><button style="width:100%; height:38px; background-color:#25D366; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold; width:100%;">🟢 ENVIAR WHATSAPP</button></a>', unsafe_allow_html=True)
 
-            if ja and st.button("❌ EXCLUIR MINHA ASSINATURA"):
+            if ja and st.button("❌ EXCLUIR MINHA ASSINATURA", use_container_width=True):
                 for idx, r in enumerate(dados_p):
                     if r[3] == user['Nome']: sheet_p.delete_rows(idx + 1); st.rerun()
 
