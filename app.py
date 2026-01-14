@@ -24,15 +24,17 @@ def buscar_usuarios_cadastrados():
         return sheet_u.get_all_records()
     except: return []
 
-@st.cache_data(ttl=10)
 def buscar_limite_dinamico():
     try:
         client = conectar_gsheets()
         doc = client.open("ListaPresenca")
-        try: sheet_c = doc.worksheet("Config")
-        except: 
+        try:
+            sheet_c = doc.worksheet("Config")
+        except:
+            # Cria automaticamente se não existir para evitar Erro: Config
             sheet_c = doc.add_worksheet(title="Config", rows="10", cols="5")
-            sheet_c.update('A1', 'LIMITE'); sheet_c.update('A2', '100')
+            sheet_c.update('A1', 'LIMITE')
+            sheet_c.update('A2', '100')
         return int(sheet_c.acell('A2').value)
     except: return 100
 
@@ -116,7 +118,6 @@ try:
 
     if st.session_state.usuario_logado is None and not st.session_state.is_admin:
         t1, t2, t3, t4, t5 = st.tabs(["Login", "Cadastro", "Instruções", "Recuperar", "ADM"])
-        
         with t1:
             with st.form("form_login"):
                 l_e, l_t, l_s = st.text_input("E-mail:"), st.text_input("Telefone:"), st.text_input("Senha:", type="password")
@@ -127,7 +128,6 @@ try:
                             st.session_state.usuario_logado = u_a; st.rerun()
                         else: st.error("Acesso bloqueado. Aguardando aprovação do Administrador.")
                     else: st.error("Dados incorretos.")
-        
         with t2:
             if len(records_u) >= limite_max: st.warning(f"⚠️ Limite de {limite_max} usuários atingido.")
             else:
@@ -140,7 +140,6 @@ try:
                         else:
                             sheet_u_escrita.append_row([n_n, n_g, n_l, n_p, n_o, n_e, n_t, "PENDENTE"])
                             st.cache_data.clear(); st.success("Cadastro realizado! Aguardando aprovação do Administrador.")
-        
         with t3:
             st.markdown("### 📖 Guia de Uso")
             st.success("📲 **COMO INSTALAR (TELA INICIAL)**")
@@ -161,20 +160,18 @@ try:
             * Nos períodos em que a lista ficar suspensa para conferência (05:00h às 07:00h / 17:00h às 19:00h), os três PPMM que estiverem no topo da lista terão acesso à lista de check up (botão no topo da lista) para tirar a falta de quem estará entrando no ônibus. O mais antigo assume e na ausência dele o seu sucessor assume.
             * Após o horário de 06:50h e de 18:50h, a lista será automaticamente zerada para que o novo ciclo da lista possa ocorrer. Sendo assim, caso queira manter um histórico de viagem, antes desses horários, faça o download do pdf e/ou do resumo do W.Zap.
             """)
-            
         with t4:
             e_r = st.text_input("E-mail cadastrado:")
             if st.button("RECUPERAR DADOS", use_container_width=True):
                 u_r = next((u for u in records_u if str(u.get('Email', '')).strip().lower() == e_r.strip().lower()), None)
                 if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')} | Tel: {u_r.get('TELEFONE')}")
                 else: st.error("E-mail não encontrado.")
-
         with t5:
             with st.form("form_admin"):
                 ad_u, ad_s = st.text_input("Usuário ADM:"), st.text_input("Senha ADM:", type="password")
                 if st.form_submit_button("ACESSAR PAINEL"):
                     if ad_u == "Administrador" and ad_s == "Administrador@123":
-                        st.session_state.is_admin = True; st.rerun()
+                        st.session_state.is_admin = True; st.cache_data.clear(); st.rerun()
                     else: st.error("ADM inválido.")
 
     elif st.session_state.is_admin:
@@ -185,24 +182,25 @@ try:
         novo_limite = st.number_input("Limite máximo de usuários:", value=limite_max)
         if st.button("💾 SALVAR NOVO LIMITE"):
             try:
-                doc_escrita.worksheet("Config").update('A2', str(novo_limite))
+                sheet_config = doc_escrita.worksheet("Config")
+                sheet_config.update('A2', str(novo_limite))
                 st.cache_data.clear(); st.success("Limite atualizado!")
-            except: st.error("Erro: Aba 'Config' não encontrada na planilha.")
+            except: st.error("Erro técnico na aba 'Config'.")
 
         st.divider(); st.subheader("👥 Gestão de Usuários")
         busca = st.text_input("🔍 Pesquisar por Nome ou E-mail:").strip().lower()
         
-        # LOGICA OTIMIZADA PARA APROVAR TODOS SEM ERRO DE QUOTA
+        # CORREÇÃO ERRO 429: Comando único de atualização em massa
         if st.button("✅ ATIVAR TODOS OS USUÁRIOS"):
-            with st.spinner("Processando aprovação em lote..."):
-                num_total = len(records_u)
-                novos_status = [["ATIVO"]] * num_total
-                sheet_u_escrita.update(f'H2:H{num_total+1}', novos_status)
-                st.cache_data.clear(); st.success("Todos os usuários foram ativados com sucesso!"); st.rerun()
+            with st.spinner("Aprovando todos..."):
+                num = len(records_u)
+                if num > 0:
+                    status_list = [["ATIVO"]] * num
+                    sheet_u_escrita.update(f'H2:H{num+1}', status_list)
+                    st.cache_data.clear(); st.success("Todos ativados!"); st.rerun()
 
         for i, user in enumerate(records_u):
-            nome_u = str(user.get('Nome','')).lower()
-            email_u = str(user.get('Email','')).lower()
+            nome_u, email_u = str(user.get('Nome','')).lower(), str(user.get('Email','')).lower()
             if busca == "" or busca in nome_u or busca in email_u:
                 with st.expander(f"{user.get('Graduação')} {user.get('Nome')} - {user.get('STATUS')}"):
                     c1, c2, c3 = st.columns([2, 1, 1])
@@ -221,13 +219,11 @@ try:
 
     else:
         u = st.session_state.usuario_logado
-        st.sidebar.markdown("### 👤 Usuário Conectado")
-        st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
+        st.sidebar.markdown(f"### 👤 {u.get('Graduação')} {u.get('Nome')}")
         if st.sidebar.button("Sair", use_container_width=True): st.session_state.usuario_logado = None; st.rerun()
         st.sidebar.markdown("---")
-        st.sidebar.caption("Desenvolvido por:")
-        st.sidebar.write("MAJ ANDRÉ AGUIAR - CAES")
-        
+        st.sidebar.caption("Desenvolvido por: MAJ ANDRÉ AGUIAR")
+
         df_o, df_v = pd.DataFrame(), pd.DataFrame()
         ja, pos = False, 999
         if dados_p and len(dados_p) > 1:
@@ -245,7 +241,7 @@ try:
         elif aberto:
             if st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True):
                 agora = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
-                sheet_p_escrita.append_row([agora, u.get('ORIGEM') or "QG", u.get('Graduação'), u.get('Nome'), u.get('Lotação'), u.get('Email')])
+                sheet_p_escrita.append_row([agora, u.get('QG_RMCF_OUTROS') or "QG", u.get('Graduação'), u.get('Nome'), u.get('Lotação'), u.get('Email')])
                 st.cache_data.clear(); st.rerun()
         else: st.info("⌛ Lista fechada para novas inscrições.")
 
@@ -257,8 +253,7 @@ try:
 
         if dados_p and len(dados_p) > 1:
             inscritos = len(df_o); vagas_restantes = 38 - inscritos
-            st.subheader(f"Voluntários Inscritos: {inscritos}")
-            st.subheader(f"Vagas Previstas: 38")
+            st.subheader(f"Voluntários Inscritos: {inscritos}"); st.subheader(f"Vagas Previstas: 38")
             if vagas_restantes >= 0: st.subheader(f"Vagas Restantes: {vagas_restantes}")
             else: st.subheader(f"Excedentes: {abs(vagas_restantes)}")
             if st.button("🔄 ATUALIZAR", use_container_width=True): st.cache_data.clear(); st.rerun()
@@ -267,8 +262,7 @@ try:
             c1, c2 = st.columns(2)
             with c1:
                 pdf = FPDF(); pdf.add_page(); pdf.set_font("Arial", "B", 12)
-                pdf.cell(190, 10, "LISTA DE PRESENÇA", ln=True, align="C")
-                pdf.ln(5); pdf.set_font("Arial", "B", 8)
+                pdf.cell(190, 10, "LISTA DE PRESENÇA", ln=True, align="C"); pdf.ln(5)
                 headers = ["Nº", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]; col_widths = [15, 25, 80, 70]
                 for h_idx, h in enumerate(headers): pdf.cell(col_widths[h_idx], 8, h, border=1, align="C")
                 pdf.ln(); pdf.set_font("Arial", "", 8)
