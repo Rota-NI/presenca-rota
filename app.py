@@ -83,11 +83,8 @@ def aplicar_ordenacao(df):
 
 # --- INTERFACE ---
 st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered")
-
-# Script de Integração Telegram
 st.markdown('<script src="https://telegram.org/js/telegram-web-app.js"></script>', unsafe_allow_html=True)
 
-# Estilos CSS (Largura Compacta da Tabela)
 st.markdown("""<style>
     .titulo-container { text-align: center; width: 100%; }
     .titulo-responsivo { font-size: clamp(1.2rem, 5vw, 2.2rem); font-weight: bold; margin-bottom: 20px; }
@@ -104,36 +101,40 @@ if 'usuario_logado' not in st.session_state: st.session_state.usuario_logado = N
 if 'conf_ativa' not in st.session_state: st.session_state.conf_ativa = False
 
 try:
-    # Ordem de execução prioritária para limpeza
     doc_escrita = conectar_escrita_direta()
     sheet_p_escrita = doc_escrita.sheet1
     dados_p = buscar_presenca_atualizada()
     aberto, janela_conf = verificar_status_e_limpar(sheet_p_escrita, dados_p)
-    
     records_u = buscar_usuarios_cadastrados()
 
     if st.session_state.usuario_logado is None:
         t1, t2, t3, t4 = st.tabs(["Login", "Cadastro", "Instruções", "Recuperar"])
         with t1:
             with st.form("form_login"):
-                l_e, l_s = st.text_input("E-mail:"), st.text_input("Senha:", type="password")
+                l_e = st.text_input("E-mail:")
+                l_t = st.text_input("Telefone (Ex: 21999999999):") # Novo campo de login
+                l_s = st.text_input("Senha:", type="password")
                 if st.form_submit_button("ENTRAR", use_container_width=True):
-                    u_a = next((u for u in records_u if str(u.get('Email','')).strip().lower() == l_e.strip().lower() and str(u.get('Senha','')) == str(l_s)), None)
+                    # Validação tripla: Email, Senha e Telefone
+                    u_a = next((u for u in records_u if str(u.get('Email','')).strip().lower() == l_e.strip().lower() 
+                                and str(u.get('Senha','')) == str(l_s) 
+                                and str(u.get('Telefone','')).strip() == l_t.strip()), None)
                     if u_a: st.session_state.usuario_logado = u_a; st.rerun()
-                    else: st.error("E-mail ou senha incorretos.")
+                    else: st.error("Dados de acesso incorretos (verifique E-mail, Senha e Telefone).")
         with t2:
-            # ALTERAÇÃO: Limite de 100 cadastros
             if len(records_u) >= 100:
-                st.warning("⚠️ Limite de 100 usuários cadastrados atingido. Contate o administrador.")
+                st.warning("⚠️ Limite de 100 usuários cadastrados atingido.")
             else:
                 with st.form("form_novo_cadastro"):
                     n_n, n_e = st.text_input("Nome de Escala:"), st.text_input("E-mail (Login):")
+                    n_t = st.text_input("Telefone (Apenas números):") # Novo campo de cadastro
                     n_g = st.selectbox("Graduação:", ["TCEL", "MAJ", "CAP", "1º TEN", "2º TEN", "SUBTEN", "1º SGT", "2º SGT", "3º SGT", "CB", "SD", "FC COM", "FC TER"])
                     n_l, n_o, n_p = st.text_input("Lotação:"), st.selectbox("Origem:", ["QG", "RMCF", "OUTROS"]), st.text_input("Senha:", type="password")
                     if st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True):
                         if any(str(u.get('Email','')).strip().lower() == n_e.strip().lower() for u in records_u): st.error("E-mail já cadastrado.")
                         else:
-                            doc_escrita.worksheet("Usuarios").append_row([n_n, n_g, n_l, n_p, n_o, n_e])
+                            # Salva incluindo o Telefone
+                            doc_escrita.worksheet("Usuarios").append_row([n_n, n_g, n_l, n_p, n_o, n_e, n_t])
                             st.cache_data.clear(); st.success("Cadastro realizado!")
         with t3:
             st.markdown("### 📖 Guia de Uso")
@@ -141,25 +142,19 @@ try:
             st.markdown("**No Chrome (Android):** Toque nos 3 pontos (⋮) e em 'Instalar Aplicativo'.")
             st.markdown("**No Safari (iPhone):** Toque em Compartilhar (⬆️) e em 'Adicionar à Tela de Início'.")
             st.markdown("**No Telegram:** Procure o bot `@RotaNovaIguacuBot` e toque no botão 'Abrir App Rota' no menu.")
-            st.markdown("**QR CODE:** https://drive.google.com/file/d/1RU1i0u1hSqdfaL3H7HUaeV4hRvR2cROf/view?usp=sharing")
-            st.markdown("**LINK PARA NAVEGADOR:** https://presenca-rota-gbiwh9bjrwdergzc473xyg.streamlit.app/")
             st.divider()
-            st.info("**CADASTRO E LOGIN:** Use seu e-mail como identificador único.")
+            st.info("**CADASTRO E LOGIN:** Use seu E-mail e Telefone como identificadores.")
             st.markdown("""
             **1. Regras de Horário:**
             * **Manhã:** Inscrições abertas até às 05:00h. Reabre às 07:00h.
             * **Tarde:** Inscrições abertas até às 17:00h. Reabre às 19:00h.
             * **Finais de Semana:** Abrem domingo às 19:00h.
-            
-            **2. Observação:**
-            * Nos períodos em que a lista ficar suspensa para conferência (05:00h às 07:00h / 17:00h às 19:00h), os três PPMM que estiverem no topo da lista terão acesso à lista de check up (botão no topo da lista) para tirar a falta de quem estará entrando no ônibus. O mais antigo assume e na ausência dele o seu sucessor assume.
-            * Após o horário de 06:50h e de 18:50h, a lista será automaticamente zerada para que o novo ciclo da lista possa ocorrer. Sendo assim, caso queira manter um histórico de viagem, antes desses horários, faça o download do pdf e/ou do resumo do W.Zap.
             """)
         with t4:
             e_r = st.text_input("E-mail cadastrado:")
             if st.button("RECUPERAR DADOS", use_container_width=True):
                 u_r = next((u for u in records_u if str(u.get('Email', '')).strip().lower() == e_r.strip().lower()), None)
-                if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')}")
+                if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')} | Tel: {u_r.get('Telefone')}")
                 else: st.error("E-mail não encontrado.")
     else:
         u = st.session_state.usuario_logado
