@@ -98,7 +98,7 @@ st.markdown("""<style>
     .footer { text-align: center; font-size: 11px; color: #888; margin-top: 40px; padding: 10px; border-top: 1px solid #eee; }
 </style>""", unsafe_allow_html=True)
 
-st.markdown('<div class="titulo-container"><div class="titulo-responsivo">🚌 ROTA NOVA IGUAÇU</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="titulo-container"><div class="titulo-responsivo">🚌 ROTA NOVA IGUAÇU 🚌</div></div>', unsafe_allow_html=True)
 
 if 'usuario_logado' not in st.session_state: st.session_state.usuario_logado = None
 if 'conf_ativa' not in st.session_state: st.session_state.conf_ativa = False
@@ -136,12 +136,13 @@ try:
             st.markdown("**No Safari (iPhone):** Toque em Compartilhar (⬆️) e em 'Adicionar à Tela de Início'.")
             st.markdown("**No Telegram:** Procure o bot `@RotaNovaIguacuBot` e toque no botão 'Abrir App Rota' no menu.")
             st.divider()
-            st.info("**1. Cadastro e Login:** Use seu e-mail como identificador único.")
+            st.info("**CADASTRO E LOGIN:** Use seu e-mail como identificador único.")
             st.markdown("""
             **2. Regras de Horário:**
-            * **Manhã:** Inscrições abertas até às 05:00h.
-            * **Tarde:** Inscrições abertas até às 17:00h.
+            * **Manhã:** Inscrições abertas até às 05:00h. Reabre às 07:00h.
+            * **Tarde:** Inscrições abertas até às 17:00h. Reabre às 19:00h.
             * **Finais de Semana:** Abrem domingo às 19:00h.
+            * **Observação:** Nos períodos em que a lista ficar suspensa para conferência, os três que estiverem no topo da lista terão acesso à lista de check up de quem está entrando no ônibus. O mais antigo assume e na ausência o seu sucessor.    
             """)
         with t4:
             e_r = st.text_input("E-mail cadastrado:")
