@@ -456,7 +456,7 @@ try:
                     st.rerun()
 
             with c_up2:
-                st.caption("Atualiza...).")
+                st.caption("Atualiza...")
 
             st.write(
                 f"<div class='tabela-responsiva'>{df_v.drop(columns=['EMAIL']).to_html(index=False, justify='center', border=0, escape=False)}</div>",
