@@ -7,14 +7,13 @@ from datetime import datetime
 # --- CONFIGURAÇÃO DE ACESSO ---
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
-# Função para conectar
 def conectar():
     creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
     client = gspread.authorize(creds)
     return client.open("ListaPresenca").sheet1
 
 # --- TÍTULO ---
-st.title("🚌 ROTA NOVA IGUAÇU")
+st.markdown("<h1 style='text-align: center;'>🚌 ROTA NOVA IGUAÇU</h1>", unsafe_allow_html=True)
 
 try:
     sheet = conectar()
@@ -32,6 +31,14 @@ try:
             else:
                 st.error("Digite seu nome.")
 
+    # --- MOSTRAR TABELA (NOVIDADE) ---
+    st.subheader("Pessoas Presentes")
+    dados = sheet.get_all_values()
+    if len(dados) > 1:
+        df = pd.DataFrame(dados[1:], columns=dados[0])
+        st.table(df)
+    else:
+        st.info("Nenhuma presença registrada ainda.")
+
 except Exception as e:
-    st.error(f"Erro de conexão: {e}")
-    st.info("Verifique se você compartilhou a planilha com o e-mail da conta de serviço.")
+    st.error(f"Erro: {e}")
