@@ -16,7 +16,7 @@ def conectar_gsheets():
     creds = Credentials.from_service_account_info(info, scopes=scope)
     return gspread.authorize(creds)
 
-@st.cache_data(ttl=60) # Cache de 1 minuto para usuários (evita erro 429)
+@st.cache_data(ttl=60) # Cache de 1 minuto para usuários
 def buscar_usuarios_cadastrados():
     try:
         client = conectar_gsheets()
@@ -35,7 +35,6 @@ def buscar_presenca_atualizada():
         return None
 
 def conectar_escrita_direta():
-    # Para salvar nomes, ignoramos o cache para ser instantâneo
     return conectar_gsheets().open("ListaPresenca")
 
 def verificar_status_e_limpar(sheet_p, dados_p):
@@ -99,7 +98,6 @@ if 'usuario_logado' not in st.session_state: st.session_state.usuario_logado = N
 if 'conf_ativa' not in st.session_state: st.session_state.conf_ativa = False
 
 try:
-    # Busca dados com cache para evitar erro 429
     records_u = buscar_usuarios_cadastrados()
     dados_p = buscar_presenca_atualizada()
     
@@ -117,7 +115,6 @@ try:
                     if u_a: st.session_state.usuario_logado = u_a; st.rerun()
                     else: st.error("E-mail ou senha incorretos.")
         with t2:
-            # ABA CADASTRO RESTAURADA (fora de blocos que dependem de sucesso de login)
             with st.form("form_novo_cadastro"):
                 n_nome = st.text_input("Nome de Escala:")
                 n_email = st.text_input("E-mail (Será seu Login):")
@@ -133,14 +130,12 @@ try:
                         st.cache_data.clear()
                         st.success("Cadastro realizado! Use a aba Login.")
         with t3:
-            # ABA RECUPERAÇÃO RESTAURADA
             e_recup = st.text_input("Digite o e-mail cadastrado:")
             if st.button("RECUPERAR MEUS DADOS", use_container_width=True):
                 u_r = next((u for u in records_u if str(u.get('Email', '')).strip().lower() == e_recup.strip().lower()), None)
                 if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')}")
                 else: st.error("E-mail não encontrado.")
     else:
-        # --- ÁREA LOGADA ---
         u = st.session_state.usuario_logado
         st.sidebar.info(f"Conectado: {u.get('Graduação')} {u.get('Nome')}")
         if st.sidebar.button("Sair", use_container_width=True): st.session_state.usuario_logado = None; st.rerun()
@@ -175,14 +170,13 @@ try:
                             st.cache_data.clear(); st.rerun()
         else: st.info("⌛ Lista fechada.")
 
-        # Checklist de Embarque (Exclusivo 1º e 2º)
-        if ja and pos <= 2:
+        # Checklist de Embarque liberado para os TRÊS PRIMEIROS da lista
+        if ja and pos <= 3:
             st.divider(); st.subheader("📋 CONFERÊNCIA DE EMBARQUE")
             if st.button("📝 ABRIR / FECHAR PAINEL", use_container_width=True):
                 st.session_state.conf_ativa = not st.session_state.conf_ativa
             if st.session_state.conf_ativa:
                 for i, row in df_o.iterrows():
-                    # Chave única absoluta para evitar erro Duplicate Key
                     st.checkbox(f"{row['Nº']} - {row.get('GRADUAÇÃO')} {row.get('NOME')}", key=f"chk_{i}_{row.get('EMAIL')}")
             st.divider()
 
@@ -191,7 +185,6 @@ try:
             if st.button("🔄 ATUALIZAR LISTA", use_container_width=True): st.cache_data.clear(); st.rerun()
             st.write(f'<div class="tabela-responsiva">{df_v.drop(columns=["EMAIL"]).to_html(index=False, justify="center", border=0, escape=False)}</div>', unsafe_allow_html=True)
             
-            # Botões de PDF e WhatsApp
             c1, c2 = st.columns(2)
             with c1:
                 pdf = FPDF()
