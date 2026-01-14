@@ -131,7 +131,7 @@ try:
             c_inst1, c_inst2 = st.columns(2)
             with c_inst1:
                 st.markdown("**Android (Chrome):**")
-                st.caption("1. Toque nos 3 pontinhos (⋮) no canto superior.")
+                st.caption("1. Toque nos três pontinhos (⋮) localizados no canto superior.")
                 st.caption("2. Selecione 'Instalar Aplicativo' ou 'Adicionar à tela inicial'.")
             with c_inst2:
                 st.markdown("**iPhone (Safari):**")
