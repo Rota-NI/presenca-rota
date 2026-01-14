@@ -24,10 +24,10 @@ try:
         
         with col1:
             qg_opcoes = st.selectbox("Destino:", ["QG", "RMCF", "OUTROS"])
-            # LISTA CORRIGIDA COM 1º/2º TEN E 1º/2º/3º SGT
+            # LISTA EXATA CONFORME SUA DEFINIÇÃO
             graduacao = st.selectbox("Graduação:", [
-                "TCEL", "Maj", "Cap", "1º Ten", "2º Ten", 
-                "Sub", "1º Sgt", "2º Sgt", "3º Sgt", "Cb", "Sd"
+                "TCEL", "MAJ", "CAP", "1º TEN", "2º TEN", 
+                "SUBTEN", "1º SGT", "2º SGT", "3º SGT", "CB", "SD", "FC COM", "FC TER"
             ])
         
         with col2:
@@ -39,6 +39,7 @@ try:
         if submit:
             if nome and lotacao:
                 agora = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+                # Salva os dados na planilha
                 sheet.append_row([agora, qg_opcoes, graduacao, nome, lotacao])
                 st.success(f"Presença de {nome} registrada!")
                 st.rerun()
@@ -49,9 +50,7 @@ try:
     st.subheader("Pessoas Presentes")
     dados = sheet.get_all_values()
     if len(dados) > 1:
-        # Criar o DataFrame com os dados da planilha
         df = pd.DataFrame(dados[1:], columns=dados[0])
-        # Exibir a tabela na tela
         st.table(df)
     else:
         st.info("Nenhuma presença registrada ainda.")
