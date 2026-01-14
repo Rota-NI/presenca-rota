@@ -29,10 +29,6 @@ FUSO_BR = pytz.timezone("America/Sao_Paulo")
 # WRAPPER COM RETRY / BACKOFF PARA 429
 # ==========================================================
 def gs_call(func, *args, **kwargs):
-    """
-    Executa chamadas gspread com retry exponencial para erros 429/5xx.
-    Evita quebrar o app em momentos de pico de quota.
-    """
     max_tries = 6
     base = 0.6
     for attempt in range(max_tries):
@@ -40,21 +36,18 @@ def gs_call(func, *args, **kwargs):
             return func(*args, **kwargs)
         except APIError as e:
             msg = str(e)
-            # gspread normalmente inclui código na mensagem
             is_429 = ("429" in msg) or ("Quota exceeded" in msg) or ("RESOURCE_EXHAUSTED" in msg)
             is_5xx = any(code in msg for code in ["500", "502", "503", "504"])
             if is_429 or is_5xx:
-                # backoff exponencial + jitter
                 sleep_s = (base * (2 ** attempt)) + random.uniform(0.0, 0.35)
                 time_module.sleep(min(sleep_s, 6.0))
                 continue
             raise
-    # Se estourou tentativas:
     raise APIError("Google Sheets: muitas requisições (429). Tente novamente em instantes.")
 
 
 # ==========================================================
-# CONEXÕES (CACHE_RESOURCE) - não reautentica toda hora
+# CONEXÕES (CACHE_RESOURCE)
 # ==========================================================
 @st.cache_resource
 def conectar_gsheets():
@@ -78,7 +71,6 @@ def ws_usuarios():
 @st.cache_resource
 def ws_presenca():
     doc = abrir_documento()
-    # sheet1
     return doc.sheet1
 
 
@@ -88,17 +80,27 @@ def ws_config():
     try:
         return gs_call(doc.worksheet, WS_CONFIG)
     except Exception:
-        # cria uma vez e deixa cacheado como resource
         sheet_c = gs_call(doc.add_worksheet, title=WS_CONFIG, rows="10", cols="5")
         gs_call(sheet_c.update, "A1:A2", [["LIMITE"], ["100"]])
         return sheet_c
 
 
 # ==========================================================
-# LEITURAS (CACHE_DATA) - TTL MAIOR + "manual refresh"
+# LEITURAS (CACHE_DATA)
 # ==========================================================
 @st.cache_data(ttl=30)
 def buscar_usuarios_cadastrados():
+    """Uso geral (Login/Cadastro/Recuperar)."""
+    try:
+        sheet_u = ws_usuarios()
+        return gs_call(sheet_u.get_all_records)
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=3)
+def buscar_usuarios_admin():
+    """Uso específico do ADM: mais fresco."""
     try:
         sheet_u = ws_usuarios()
         return gs_call(sheet_u.get_all_records)
@@ -136,16 +138,13 @@ def verificar_status_e_limpar(sheet_p, dados_p):
     else:
         marco = (agora - timedelta(days=1)).replace(hour=18, minute=50, second=0, microsecond=0)
 
-    # Limpeza: só faz se conseguir ler a última data
     if dados_p and len(dados_p) > 1:
         try:
             ultima_str = dados_p[-1][0]
             ultima_dt = FUSO_BR.localize(datetime.strptime(ultima_str, "%d/%m/%Y %H:%M:%S"))
             if ultima_dt < marco:
-                # IMPORTANTE: isso é operação pesada, mas acontece no máximo 2x por dia
                 gs_call(sheet_p.resize, rows=1)
                 gs_call(sheet_p.resize, rows=100)
-                # NÃO limpar cache global agressivamente aqui
                 st.session_state["_force_refresh_presenca"] = True
                 st.rerun()
         except Exception:
@@ -215,21 +214,18 @@ if "conf_ativa" not in st.session_state:
     st.session_state.conf_ativa = False
 if "_force_refresh_presenca" not in st.session_state:
     st.session_state._force_refresh_presenca = False
+if "_adm_first_load" not in st.session_state:
+    st.session_state._adm_first_load = False  # controla refresh automático 1x
 
 try:
-    # ==========================================================
-    # IMPORTANTE: Não ler presença aqui.
-    # Só carrega usuários/limite (mais leve) antes do login.
-    # ==========================================================
-    records_u = buscar_usuarios_cadastrados()
+    # Leitura leve pro público
+    records_u_public = buscar_usuarios_cadastrados()
     limite_max = buscar_limite_dinamico()
-
-    # Sheets de escrita: mantém via cache_resource (não reabre)
     sheet_u_escrita = ws_usuarios()
 
-    # ==========================================================
+    # =========================================
     # LOGIN / CADASTRO / INSTRUÇÕES / RECUPERAR / ADM
-    # ==========================================================
+    # =========================================
     if st.session_state.usuario_logado is None and not st.session_state.is_admin:
         t1, t2, t3, t4, t5 = st.tabs(["Login", "Cadastro", "Instruções", "Recuperar", "ADM"])
 
@@ -240,7 +236,7 @@ try:
                 l_s = st.text_input("Senha:", type="password")
                 if st.form_submit_button("ENTRAR", use_container_width=True):
                     u_a = next(
-                        (u for u in records_u
+                        (u for u in records_u_public
                          if str(u.get("Email", "")).strip().lower() == l_e.strip().lower()
                          and str(u.get("Senha", "")) == str(l_s)
                          and str(u.get("TELEFONE", "")).strip() == l_t.strip()),
@@ -257,7 +253,7 @@ try:
                         st.error("Dados incorretos.")
 
         with t2:
-            if len(records_u) >= limite_max:
+            if len(records_u_public) >= limite_max:
                 st.warning(f"⚠️ Limite de {limite_max} usuários atingido.")
             else:
                 with st.form("form_novo_cadastro"):
@@ -271,11 +267,13 @@ try:
                     n_p = st.text_input("Senha:", type="password")
 
                     if st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True):
-                        if any(str(u.get("Email", "")).strip().lower() == n_e.strip().lower() for u in records_u):
+                        if any(str(u.get("Email", "")).strip().lower() == n_e.strip().lower() for u in records_u_public):
                             st.error("E-mail já cadastrado.")
                         else:
                             gs_call(sheet_u_escrita.append_row, [n_n, n_g, n_l, n_p, n_o, n_e, n_t, "PENDENTE"])
-                            # em vez de limpar cache global, apenas rerun e deixar TTL cuidar
+                            # invalida caches de usuário (público e adm), sem limpar tudo
+                            buscar_usuarios_cadastrados.clear()
+                            buscar_usuarios_admin.clear()
                             st.success("Cadastro realizado! Aguardando aprovação do Administrador.")
                             st.rerun()
 
@@ -294,18 +292,12 @@ try:
             * **Manhã:** Inscrições abertas até às 05:00h. Reabre às 07:00h.
             * **Tarde:** Inscrições abertas até às 17:00h. Reabre às 19:00h.
             * **Finais de Semana:** Abrem domingo às 19:00h.
-
-            **2. Observação:**
-            * Nos períodos em que a lista ficar suspensa para conferência (05:00h às 07:00h / 17:00h às 19:00h),
-              os três PPMM que estiverem no topo da lista terão acesso à lista de check up (botão no topo da lista) para
-              tirar a falta de quem estará entrando no ônibus.
-            * Após o horário de 06:50h e de 18:50h, a lista será automaticamente zerada.
             """)
 
         with t4:
             e_r = st.text_input("E-mail cadastrado:")
             if st.button("RECUPERAR DADOS", use_container_width=True):
-                u_r = next((u for u in records_u if str(u.get("Email", "")).strip().lower() == e_r.strip().lower()), None)
+                u_r = next((u for u in records_u_public if str(u.get("Email", "")).strip().lower() == e_r.strip().lower()), None)
                 if u_r:
                     st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')} | Tel: {u_r.get('TELEFONE')}")
                 else:
@@ -318,18 +310,37 @@ try:
                 if st.form_submit_button("ACESSAR PAINEL"):
                     if ad_u == "Administrador" and ad_s == "Administrador@123":
                         st.session_state.is_admin = True
+                        st.session_state._adm_first_load = True  # ao entrar, vamos refrescar 1x
                         st.rerun()
                     else:
                         st.error("ADM inválido.")
 
-    # ==========================================================
+    # =========================================
     # PAINEL ADM
-    # ==========================================================
+    # =========================================
     elif st.session_state.is_admin:
         st.header("🛡️ PAINEL ADMINISTRATIVO")
+
         if st.button("⬅️ SAIR DO PAINEL"):
             st.session_state.is_admin = False
+            st.session_state._adm_first_load = False
             st.rerun()
+
+        # refresh automático 1x ao entrar (garante usuário recém-criado)
+        if st.session_state._adm_first_load:
+            buscar_usuarios_admin.clear()
+            st.session_state._adm_first_load = False
+
+        # lê com TTL curto
+        records_u = buscar_usuarios_admin()
+
+        cA, cB = st.columns([1, 1])
+        with cA:
+            if st.button("🔄 Atualizar usuários", use_container_width=True):
+                buscar_usuarios_admin.clear()
+                st.rerun()
+        with cB:
+            st.caption("ADM lê mais fresco (TTL=3s) sem estourar quota.")
 
         st.subheader("⚙️ Configurações Globais")
         novo_limite = st.number_input("Limite máximo de usuários:", value=int(limite_max))
@@ -345,12 +356,13 @@ try:
 
         if st.button("✅ ATIVAR TODOS E DESLOGAR", use_container_width=True):
             if records_u:
-                # update em lote (1 chamada)
                 start = 2
                 end = len(records_u) + 1
                 rng = f"H{start}:H{end}"
                 gs_call(sheet_u_escrita.update, rng, [["ATIVO"]] * len(records_u))
-                time_module.sleep(1)
+                # invalida caches de usuário
+                buscar_usuarios_admin.clear()
+                buscar_usuarios_cadastrados.clear()
                 st.session_state.clear()
                 st.rerun()
 
@@ -362,19 +374,22 @@ try:
                     c1.write(f"📧 {user.get('Email')} | 📱 {user.get('TELEFONE')}")
                     is_ativo = (status == "ATIVO")
 
-                    # IMPORTANTE: checkbox só altera quando muda (reduz updates)
                     new_val = c2.checkbox("Liberar", value=is_ativo, key=f"adm_chk_{i}")
                     if new_val != is_ativo:
                         gs_call(sheet_u_escrita.update_cell, i + 2, 8, "ATIVO" if new_val else "INATIVO")
+                        buscar_usuarios_admin.clear()
+                        buscar_usuarios_cadastrados.clear()
                         st.rerun()
 
                     if c3.button("🗑️", key=f"del_{i}"):
                         gs_call(sheet_u_escrita.delete_rows, i + 2)
+                        buscar_usuarios_admin.clear()
+                        buscar_usuarios_cadastrados.clear()
                         st.rerun()
 
-    # ==========================================================
+    # =========================================
     # USUÁRIO LOGADO
-    # ==========================================================
+    # =========================================
     else:
         u = st.session_state.usuario_logado
 
@@ -385,12 +400,10 @@ try:
                 del st.session_state[key]
             st.rerun()
         st.sidebar.markdown("---")
-        st.sidebar.caption("Desenvolvido por: MAJ ANDRÉ AGUIAR - CAES")
+        st.sidebar.caption("Desenvolvido por:           MAJ ANDRÉ AGUIAR - CAES")
 
-        # Agora sim: só logado lê presença (reduz MUITO reads)
         sheet_p_escrita = ws_presenca()
 
-        # “forçar refresh” (limpeza automática) sem cache_data.clear global
         if st.session_state._force_refresh_presenca:
             buscar_presenca_atualizada.clear()
             st.session_state._force_refresh_presenca = False
@@ -415,7 +428,6 @@ try:
                 for idx, r in enumerate(dados_p):
                     if len(r) >= 6 and str(r[5]).strip().lower() == email_logado:
                         gs_call(sheet_p_escrita.delete_rows, idx + 1)
-                        # invalida só presença
                         buscar_presenca_atualizada.clear()
                         st.rerun()
 
@@ -454,9 +466,8 @@ try:
                 if st.button("🔄 ATUALIZAR", use_container_width=True):
                     buscar_presenca_atualizada.clear()
                     st.rerun()
-
             with c_up2:
-                st.caption("Atualiza...")
+                st.caption("Atualiza sob demanda (evita 429).")
 
             st.write(
                 f"<div class='tabela-responsiva'>{df_v.drop(columns=['EMAIL']).to_html(index=False, justify='center', border=0, escape=False)}</div>",
