@@ -27,7 +27,7 @@ FUSO_BR = pytz.timezone("America/Sao_Paulo")
 
 
 # ==========================================================
-# TELEFONE: normalização + formatação (xx) xxxxx.xxxx
+# TELEFONE:
 # ==========================================================
 def tel_only_digits(s: str) -> str:
     return re.sub(r"\D+", "", str(s or ""))
@@ -365,7 +365,7 @@ try:
                 l_e = st.text_input("E-mail:")
 
                 # telefone com “máscara” (formatar ao digitar)
-                raw_tel_login = st.text_input("Telefone (xx) xxxxx.xxxx:", value=st.session_state._tel_login_fmt)
+                raw_tel_login = st.text_input("Telefone:", value=st.session_state._tel_login_fmt)
                 fmt_tel_login = tel_format_br(raw_tel_login)
                 st.session_state._tel_login_fmt = fmt_tel_login  # mantém formatado no campo
 
@@ -404,7 +404,7 @@ try:
                     n_n = st.text_input("Nome de Escala:")
                     n_e = st.text_input("E-mail:")
 
-                    raw_tel_cad = st.text_input("Telefone (xx) xxxxx.xxxx:", value=st.session_state._tel_cad_fmt)
+                    raw_tel_cad = st.text_input("Telefone:", value=st.session_state._tel_cad_fmt)
                     fmt_tel_cad = tel_format_br(raw_tel_cad)
                     st.session_state._tel_cad_fmt = fmt_tel_cad
 
