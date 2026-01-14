@@ -6,7 +6,6 @@ from datetime import datetime, time, timedelta
 import pytz
 from fpdf import FPDF
 import urllib.parse
-import time as time_module
 
 # --- CONFIGURAÇÃO DE ACESSO ---
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -104,7 +103,8 @@ st.markdown('<div class="titulo-container"><div class="titulo-responsivo">🚌 R
 
 if 'usuario_logado' not in st.session_state: st.session_state.usuario_logado = None
 if 'conf_ativa' not in st.session_state: st.session_state.conf_ativa = False
-if 'atualizado_inicial' not in st.session_state: st.session_state.atualizado_inicial = False
+# Controle de sincronização pós-carga
+if 'sync_completa' not in st.session_state: st.session_state.sync_completa = False
 
 try:
     records_u = buscar_usuarios_cadastrados()
@@ -122,9 +122,9 @@ try:
                     if u_a: 
                         st.cache_data.clear()
                         st.session_state.usuario_logado = u_a
+                        st.session_state.sync_completa = False # Reinicia trava para nova carga
                         st.rerun()
                     else: st.error("E-mail ou senha incorretos.")
-        # ... abas t2, t3, t4 permanecem iguais conforme solicitado ...
         with t2:
             with st.form("form_novo_cadastro"):
                 n_n, n_e = st.text_input("Nome de Escala:"), st.text_input("E-mail (Login):")
@@ -156,18 +156,16 @@ try:
             * Após o horário de 06:50h e de 18:50h, a lista será automaticamente zerada para que o novo ciclo da lista possa ocorrer. Sendo assim, caso queira manter um histórico de viagem, antes desses horários, faça o download do pdf e/ou do resumo do W.Zap.
             """)
         with t4:
-            e_recup = st.text_input("E-mail cadastrado:")
+            e_r = st.text_input("E-mail cadastrado:")
             if st.button("RECUPERAR DADOS", use_container_width=True):
-                u_r = next((u for u in records_u if str(u.get('Email', '')).strip().lower() == e_recup.strip().lower()), None)
+                u_r = next((u for u in records_u if str(u.get('Email', '')).strip().lower() == e_r.strip().lower()), None)
                 if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')}")
                 else: st.error("E-mail não encontrado.")
-
     else:
-        # DETERMINAÇÃO: ATUALIZAÇÃO AUTOMÁTICA PÓS-LOGIN (2 SEGUNDOS)
-        if not st.session_state.atualizado_inicial:
-            time_module.sleep(2)
+        # LOGICA DE SINCRONIZACAO POS-CARREGA TOTAL
+        if not st.session_state.sync_completa:
+            st.session_state.sync_completa = True
             st.cache_data.clear()
-            st.session_state.atualizado_inicial = True
             st.rerun()
 
         u = st.session_state.usuario_logado
@@ -175,7 +173,7 @@ try:
         st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
         if st.sidebar.button("Sair", use_container_width=True): 
             st.session_state.usuario_logado = None
-            st.session_state.atualizado_inicial = False
+            st.session_state.sync_completa = False
             st.rerun()
         st.sidebar.markdown("---")
         st.sidebar.caption("Desenvolvido por:")
