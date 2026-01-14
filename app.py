@@ -161,6 +161,42 @@ def buscar_presenca_atualizada():
         return None
 
 
+# ==========================================================
+# CORREÇÃO: remover linhas vazias/incompletas que geram "None"
+# ==========================================================
+def filtrar_linhas_presenca(dados_p):
+    """
+    Mantém somente linhas válidas para exibição/conferência:
+    - pelo menos 6 colunas (DATA, ORIGEM, GRAD, NOME, LOTAÇÃO, EMAIL)
+    - DATA, NOME e EMAIL preenchidos
+    """
+    if not dados_p or len(dados_p) < 2:
+        return dados_p
+
+    header = dados_p[0]
+    body = dados_p[1:]
+
+    def norm(x):
+        return str(x).strip() if x is not None else ""
+
+    body_ok = []
+    for row in body:
+        r = list(row) + [""] * (6 - len(row))
+        r = r[:6]
+
+        data_hora = norm(r[0])
+        origem    = norm(r[1])
+        gradu     = norm(r[2])
+        nome      = norm(r[3])
+        lota      = norm(r[4])
+        email     = norm(r[5])
+
+        if data_hora and nome and email:
+            body_ok.append([data_hora, origem, gradu, nome, lota, email])
+
+    return [header] + body_ok
+
+
 def verificar_status_e_limpar(sheet_p, dados_p):
     agora = datetime.now(FUSO_BR)
     hora_atual, dia_semana = agora.time(), agora.weekday()
@@ -275,7 +311,6 @@ def gerar_pdf_apresentado(df_o: pd.DataFrame, resumo: dict) -> bytes:
 
     # Tabela
     headers = ["Nº", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
-    # Larguras pensadas pra A4
     col_w = [14, 28, 88, 60]
 
     pdf.set_font("Arial", "B", 9)
@@ -293,7 +328,7 @@ def gerar_pdf_apresentado(df_o: pd.DataFrame, resumo: dict) -> bytes:
     for idx, (_, r) in enumerate(df_o.iterrows()):
         is_exc = "Exc-" in str(r.get("Nº", ""))
         if is_exc:
-            pdf.set_fill_color(255, 235, 238)  # leve vermelho
+            pdf.set_fill_color(255, 235, 238)
         else:
             pdf.set_fill_color(245, 245, 245) if idx % 2 == 0 else pdf.set_fill_color(255, 255, 255)
 
@@ -444,11 +479,12 @@ try:
             * **Manhã:** Inscrições abertas até às 05:00h. Reabre às 07:00h.
             * **Tarde:** Inscrições abertas até às 17:00h. Reabre às 19:00h.
             * **Finais de Semana:** Abrem domingo às 19:00h.
-            
+
             **2. Observação:**
             * Nos períodos em que a lista ficar suspensa para conferência (05:00h às 07:00h / 17:00h às 19:00h), os três PPMM que estiverem no topo da lista terão acesso à lista de check up (botão no topo da lista) para tirar a falta de quem estará entrando no ônibus. O mais antigo assume e na ausência dele o seu sucessor assume.
             * Após o horário de 06:50h e de 18:50h, a lista será automaticamente zerada para que o novo ciclo da lista possa ocorrer. Sendo assim, caso queira manter um histórico de viagem, antes desses horários, faça o download do pdf e/ou do resumo do W.Zap.
             """)
+
         with t4:
             e_r = st.text_input("E-mail cadastrado:")
             if st.button("RECUPERAR DADOS", use_container_width=True):
@@ -561,13 +597,17 @@ try:
             st.session_state._force_refresh_presenca = False
 
         dados_p = buscar_presenca_atualizada()
-        aberto, janela_conf = verificar_status_e_limpar(sheet_p_escrita, dados_p)
+
+        # >>>>>>>>> CORREÇÃO AQUI: usa um "dados_p_filtrado" para exibição/conferência
+        dados_p_filtrado = filtrar_linhas_presenca(dados_p)
+
+        aberto, janela_conf = verificar_status_e_limpar(sheet_p_escrita, dados_p_filtrado)
 
         df_o, df_v = pd.DataFrame(), pd.DataFrame()
         ja, pos = False, 999
 
-        if dados_p and len(dados_p) > 1:
-            df_o, df_v = aplicar_ordenacao(pd.DataFrame(dados_p[1:], columns=dados_p[0]))
+        if dados_p_filtrado and len(dados_p_filtrado) > 1:
+            df_o, df_v = aplicar_ordenacao(pd.DataFrame(dados_p_filtrado[1:], columns=dados_p_filtrado[0]))
             email_logado = str(u.get("Email")).strip().lower()
             ja = any(email_logado == str(row.get("EMAIL", "")).strip().lower() for _, row in df_o.iterrows())
             if ja:
@@ -577,11 +617,13 @@ try:
             st.success(f"✅ Presença registrada: {pos}º")
             if st.button("❌ EXCLUIR MINHA ASSINATURA", use_container_width=True):
                 email_logado = str(u.get("Email")).strip().lower()
-                for idx, r in enumerate(dados_p):
-                    if len(r) >= 6 and str(r[5]).strip().lower() == email_logado:
-                        gs_call(sheet_p_escrita.delete_rows, idx + 1)
-                        buscar_presenca_atualizada.clear()
-                        st.rerun()
+                # mantém delete pelo "dados_p" ORIGINAL (índices reais da planilha)
+                if dados_p and len(dados_p) > 1:
+                    for idx, r in enumerate(dados_p):
+                        if len(r) >= 6 and str(r[5]).strip().lower() == email_logado:
+                            gs_call(sheet_p_escrita.delete_rows, idx + 1)
+                            buscar_presenca_atualizada.clear()
+                            st.rerun()
 
         elif aberto:
             if st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True):
@@ -604,11 +646,12 @@ try:
             st.subheader("📋 CONFERÊNCIA")
             if st.button("📝 PAINEL", use_container_width=True):
                 st.session_state.conf_ativa = not st.session_state.conf_ativa
-            if st.session_state.conf_ativa and (dados_p and len(dados_p) > 1):
+            if st.session_state.conf_ativa and (dados_p_filtrado and len(dados_p_filtrado) > 1):
                 for i, row in df_o.iterrows():
+                    # aqui não aparece mais "None" porque só entra nome válido
                     st.checkbox(f"{row['Nº']} - {row.get('NOME')}", key=f"chk_p_{i}")
 
-        if dados_p and len(dados_p) > 1:
+        if dados_p_filtrado and len(dados_p_filtrado) > 1:
             insc = len(df_o)
             rest = 38 - insc
             st.subheader(f"Inscritos: {insc} | Vagas: 38 | {'Sobra' if rest >= 0 else 'Exc'}: {abs(rest)}")
