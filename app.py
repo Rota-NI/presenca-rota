@@ -112,33 +112,29 @@ try:
         with t1:
             with st.form("form_login"):
                 l_e = st.text_input("E-mail:")
-                l_t = st.text_input("Telefone (Apenas números):") # Campo incluído
+                l_t = st.text_input("Telefone (Apenas números):")
                 l_s = st.text_input("Senha:", type="password")
                 if st.form_submit_button("ENTRAR", use_container_width=True):
-                    # Validação tripla solicitada
                     u_a = next((u for u in records_u if str(u.get('Email','')).strip().lower() == l_e.strip().lower() 
                                 and str(u.get('Senha','')) == str(l_s)
                                 and str(u.get('Telefone','')).strip() == l_t.strip()), None)
                     if u_a: st.session_state.usuario_logado = u_a; st.rerun()
-                    else: st.error("E-mail, Telefone ou Senha incorretos.")
+                    else: st.error("Dados de acesso incorretos.")
         with t2:
-            # Trava de 100 usuários solicitada
             if len(records_u) >= 100:
-                st.warning("⚠️ Limite de 100 usuários cadastrados atingido. Contate o administrador.")
+                st.warning("⚠️ Limite de 100 usuários atingido.")
             else:
                 with st.form("form_novo_cadastro"):
                     n_n, n_e = st.text_input("Nome de Escala:"), st.text_input("E-mail (Login):")
-                    n_t = st.text_input("Telefone (Ex: 21999999999):") # Campo incluído
+                    n_t = st.text_input("Telefone (Ex: 21999999999):")
                     n_g = st.selectbox("Graduação:", ["TCEL", "MAJ", "CAP", "1º TEN", "2º TEN", "SUBTEN", "1º SGT", "2º SGT", "3º SGT", "CB", "SD", "FC COM", "FC TER"])
                     n_l, n_o, n_p = st.text_input("Lotação:"), st.selectbox("Origem:", ["QG", "RMCF", "OUTROS"]), st.text_input("Senha:", type="password")
                     if st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True):
                         if any(str(u.get('Email','')).strip().lower() == n_e.strip().lower() for u in records_u): st.error("E-mail já cadastrado.")
                         else:
-                            # Salva incluindo o Telefone na coluna G da planilha Usuarios
                             doc_escrita.worksheet("Usuarios").append_row([n_n, n_g, n_l, n_p, n_o, n_e, n_t])
                             st.cache_data.clear(); st.success("Cadastro realizado!")
         with t3:
-            # SEU TEXTO ORIGINAL DE INSTRUÇÕES PRESERVADO
             st.markdown("### 📖 Guia de Uso")
             st.success("📲 **COMO INSTALAR (TELA INICIAL)**")
             st.markdown("**No Chrome (Android):** Toque nos 3 pontos (⋮) e em 'Instalar Aplicativo'.")
@@ -162,7 +158,8 @@ try:
             e_r = st.text_input("E-mail cadastrado:")
             if st.button("RECUPERAR DADOS", use_container_width=True):
                 u_r = next((u for u in records_u if str(u.get('Email', '')).strip().lower() == e_r.strip().lower()), None)
-                if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')}")
+                # ALTERAÇÃO SOLICITADA: Incluindo Telefone na recuperação
+                if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')} | Tel: {u_r.get('Telefone')}")
                 else: st.error("E-mail não encontrado.")
     else:
         u = st.session_state.usuario_logado
