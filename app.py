@@ -40,21 +40,17 @@ def verificar_status_e_limpar(sheet_p, dados_p):
     agora = datetime.now(fuso_br)
     hora_atual, dia_semana = agora.time(), agora.weekday()
 
-    # Define os marcos de limpeza
     if hora_atual >= time(18, 50): marco = agora.replace(hour=18, minute=50, second=0, microsecond=0)
     elif hora_atual >= time(6, 50): marco = agora.replace(hour=6, minute=50, second=0, microsecond=0)
     else: marco = (agora - timedelta(days=1)).replace(hour=18, minute=50, second=0, microsecond=0)
 
-    # EXECUÇÃO PRIORITÁRIA DA LIMPEZA
     if dados_p and len(dados_p) > 1:
         try:
             ultima_str = dados_p[-1][0]
             ultima_dt = fuso_br.localize(datetime.strptime(ultima_str, '%d/%m/%Y %H:%M:%S'))
             if ultima_dt < marco:
-                sheet_p.resize(rows=1)
-                sheet_p.resize(rows=100)
-                st.cache_data.clear()
-                st.rerun() # Reinicia para garantir que a próxima leitura venha vazia
+                sheet_p.resize(rows=1); sheet_p.resize(rows=100)
+                st.cache_data.clear(); st.rerun()
         except: pass
     
     is_aberto = (dia_semana == 6 and hora_atual >= time(19, 0)) or \
@@ -102,23 +98,22 @@ st.markdown("""<style>
     .footer { text-align: center; font-size: 11px; color: #888; margin-top: 40px; padding: 10px; border-top: 1px solid #eee; }
 </style>""", unsafe_allow_html=True)
 
-st.markdown('<div class="titulo-container"><div class="titulo-responsivo">🚌 ROTA NOVA IGUAÇU</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="titulo-container"><div class="titulo-responsivo">🚌 ROTA NOVA IGUAÇU 🚌</div></div>', unsafe_allow_html=True)
 
 if 'usuario_logado' not in st.session_state: st.session_state.usuario_logado = None
 if 'conf_ativa' not in st.session_state: st.session_state.conf_ativa = False
 
 try:
-    # 1. CONECTA PRIMEIRO PARA LIMPEZA
+    # ALTERAÇÃO TÉCNICA: Ordem de execução prioritária para limpeza antes da leitura
     doc_escrita = conectar_escrita_direta()
     sheet_p_escrita = doc_escrita.sheet1
     
-    # 2. BUSCA DADOS ATUAIS APENAS PARA VERIFICAR LIMPEZA
+    # Busca dados atuais para conferência de limpeza imediata
     dados_p = buscar_presenca_atualizada()
     
-    # 3. VERIFICA E LIMPA ANTES DE QUALQUER EXIBIÇÃO
+    # Executa limpeza se o horário permitir ANTES de carregar o restante da página
     aberto, janela_conf = verificar_status_e_limpar(sheet_p_escrita, dados_p)
     
-    # 4. BUSCA USUÁRIOS
     records_u = buscar_usuarios_cadastrados()
 
     if st.session_state.usuario_logado is None:
@@ -128,12 +123,8 @@ try:
                 l_e, l_s = st.text_input("E-mail:"), st.text_input("Senha:", type="password")
                 if st.form_submit_button("ENTRAR", use_container_width=True):
                     u_a = next((u for u in records_u if str(u.get('Email','')).strip().lower() == l_e.strip().lower() and str(u.get('Senha','')) == str(l_s)), None)
-                    if u_a: 
-                        st.cache_data.clear()
-                        st.session_state.usuario_logado = u_a
-                        st.rerun()
+                    if u_a: st.session_state.usuario_logado = u_a; st.rerun()
                     else: st.error("E-mail ou senha incorretos.")
-        # ... abas t2, t3 e t4 permanecem idênticas ...
         with t2:
             with st.form("form_novo_cadastro"):
                 n_n, n_e = st.text_input("Nome de Escala:"), st.text_input("E-mail (Login):")
@@ -145,18 +136,25 @@ try:
                         doc_escrita.worksheet("Usuarios").append_row([n_n, n_g, n_l, n_p, n_o, n_e])
                         st.cache_data.clear(); st.success("Cadastro realizado!")
         with t3:
+            # BLOCO DE INSTRUÇÕES MANTIDO CONFORME SUA PERSONALIZAÇÃO
             st.markdown("### 📖 Guia de Uso")
             st.success("📲 **COMO INSTALAR (TELA INICIAL)**")
             st.markdown("**No Chrome (Android):** Toque nos 3 pontos (⋮) e em 'Instalar Aplicativo'.")
             st.markdown("**No Safari (iPhone):** Toque em Compartilhar (⬆️) e em 'Adicionar à Tela de Início'.")
             st.markdown("**No Telegram:** Procure o bot `@RotaNovaIguacuBot` e toque no botão 'Abrir App Rota' no menu.")
+            st.markdown("**QR CODE:** https://drive.google.com/file/d/1RU1i0u1hSqdfaL3H7HUaeV4hRvR2cROf/view?usp=sharing")
+            st.markdown("**LINK PARA NAVEGADOR:** https://presenca-rota-gbiwh9bjrwdergzc473xyg.streamlit.app/")
             st.divider()
-            st.info("**1. Cadastro e Login:** Use seu e-mail como identificador único.")
+            st.info("**CADASTRO E LOGIN:** Use seu e-mail como identificador único.")
             st.markdown("""
-            **2. Regras de Horário:**
-            * **Manhã:** Inscrições abertas até às 05:00h.
-            * **Tarde:** Inscrições abertas até às 17:00h.
+            **1. Regras de Horário:**
+            * **Manhã:** Inscrições abertas até às 05:00h. Reabre às 07:00h.
+            * **Tarde:** Inscrições abertas até às 17:00h. Reabre às 19:00h.
             * **Finais de Semana:** Abrem domingo às 19:00h.
+            
+            **2. Observação:**
+            * Nos períodos em que a lista ficar suspensa para conferência (05:00h às 07:00h / 17:00h às 19:00h), os três PPMM que estiverem no topo da lista terão acesso à lista de check up (botão no topo da lista) para tirar a falta de quem estará entrando no ônibus. O mais antigo assume e na ausência dele o seu sucessor assume.
+            * Após o horário de 06:50h e de 18:50h, a lista será automaticamente zerada para que o novo ciclo da lista possa ocorrer. Sendo assim, caso queira manter um histórico de viagem, antes desses horários, faça o download do pdf e/ou do resumo do W.Zap.
             """)
         with t4:
             e_r = st.text_input("E-mail cadastrado:")
