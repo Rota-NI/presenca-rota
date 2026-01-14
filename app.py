@@ -138,11 +138,12 @@ try:
             st.divider()
             st.info("**CADASTRO E LOGIN:** Use seu e-mail como identificador único.")
             st.markdown("""
-            **2. Regras de Horário:**
+            **1. Regras de Horário:**
             * **Manhã:** Inscrições abertas até às 05:00h. Reabre às 07:00h.
             * **Tarde:** Inscrições abertas até às 17:00h. Reabre às 19:00h.
             * **Finais de Semana:** Abrem domingo às 19:00h.
-            * **Observação:** Nos períodos em que a lista ficar suspensa para conferência, os três que estiverem no topo da lista terão acesso à lista de check up de quem está entrando no ônibus. O mais antigo assume e na ausência o seu sucessor.    
+            **2. Observação:**
+            * **Nos períodos em que a lista ficar suspensa para conferência (05:00h às 07:00h / 17:00h às 19:00h), os três PPMM que estiverem no topo da lista terão acesso à lista de check up (botão no topo da lista) para tirar a falta de quem estará entrando no ônibus. O mais antigo assume e na ausência dele o seu sucessor assume.    
             """)
         with t4:
             e_r = st.text_input("E-mail cadastrado:")
