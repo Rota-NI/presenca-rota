@@ -24,8 +24,11 @@ try:
         
         with col1:
             qg_opcoes = st.selectbox("Destino:", ["QG", "RMCF", "OUTROS"])
-            # LISTA CORRIGIDA ABAIXO
-            graduacao = st.selectbox("Graduação:", ["Cel", "TCEL", "Maj", "Cap", "Ten", "Sub", "Sgt", "Cb", "Sd"])
+            # LISTA CORRIGIDA COM 1º/2º TEN E 1º/2º/3º SGT
+            graduacao = st.selectbox("Graduação:", [
+                "TCEL", "Maj", "Cap", "1º Ten", "2º Ten", 
+                "Sub", "1º Sgt", "2º Sgt", "3º Sgt", "Cb", "Sd"
+            ])
         
         with col2:
             nome = st.text_input("Nome de Escala:")
@@ -46,7 +49,9 @@ try:
     st.subheader("Pessoas Presentes")
     dados = sheet.get_all_values()
     if len(dados) > 1:
+        # Criar o DataFrame com os dados da planilha
         df = pd.DataFrame(dados[1:], columns=dados[0])
+        # Exibir a tabela na tela
         st.table(df)
     else:
         st.info("Nenhuma presença registrada ainda.")
