@@ -438,17 +438,17 @@ try:
             st.markdown("**QR CODE:** https://drive.google.com/file/d/1RU1i0u1hSqdfaL3H7HUaeV4hRvR2cROf/view?usp=sharing")
             st.markdown("**LINK PARA NAVEGADOR:** https://presenca-rota-gbiwh9bjrwdergzc473xyg.streamlit.app/")
             st.divider()
-            st.info("**CADASTRO E LOGIN:** Use seu e-mail como identificador único.") 
-            st.markdown(""" **1. Regras de Horário:** 
-            * **Manhã:** Inscrições abertas até às 05:00h. Reabre às 07:00h. 
-            * **Tarde:** Inscrições abertas até às 17:00h. Reabre às 19:00h. 
-            * **Finais de Semana:** Abrem domingo às 19:00h. 
+            st.info("**CADASTRO E LOGIN:** Use seu e-mail como identificador único.")
+            st.markdown("""
+            **1. Regras de Horário:**
+            * **Manhã:** Inscrições abertas até às 05:00h. Reabre às 07:00h.
+            * **Tarde:** Inscrições abertas até às 17:00h. Reabre às 19:00h.
+            * **Finais de Semana:** Abrem domingo às 19:00h.
             
-            **2. Observação:** 
-            * Nos períodos em que a lista ficar suspensa para conferência (05:00h às 07:00h / 17:00h às 19:00h), os três PPMM que estiverem no topo da lista terão acesso à lista de check up (botão no topo da lista) para tirar a falta de quem estará entrando no ônibus. O mais antigo assume e na ausência dele o seu sucessor assume. 
-            * Após o horário de 06:50h e de 18:50h, a lista será automaticamente zerada para que o novo ciclo da lista possa ocorrer. Sendo assim, caso queira manter um histórico de viagem, antes desses horários, faça o download do pdf e/ou do resumo do W.Zap. 
+            **2. Observação:**
+            * Nos períodos em que a lista ficar suspensa para conferência (05:00h às 07:00h / 17:00h às 19:00h), os três PPMM que estiverem no topo da lista terão acesso à lista de check up (botão no topo da lista) para tirar a falta de quem estará entrando no ônibus. O mais antigo assume e na ausência dele o seu sucessor assume.
+            * Após o horário de 06:50h e de 18:50h, a lista será automaticamente zerada para que o novo ciclo da lista possa ocorrer. Sendo assim, caso queira manter um histórico de viagem, antes desses horários, faça o download do pdf e/ou do resumo do W.Zap.
             """)
-
         with t4:
             e_r = st.text_input("E-mail cadastrado:")
             if st.button("RECUPERAR DADOS", use_container_width=True):
