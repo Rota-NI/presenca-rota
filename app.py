@@ -28,7 +28,11 @@ def buscar_usuarios_cadastrados():
 def buscar_limite_dinamico():
     try:
         client = conectar_gsheets()
-        sheet_c = client.open("ListaPresenca").worksheet("Config")
+        doc = client.open("ListaPresenca")
+        try: sheet_c = doc.worksheet("Config")
+        except: 
+            sheet_c = doc.add_worksheet(title="Config", rows="10", cols="5")
+            sheet_c.update('A1', 'LIMITE'); sheet_c.update('A2', '100')
         return int(sheet_c.acell('A2').value)
     except: return 100
 
@@ -180,27 +184,25 @@ try:
         st.subheader("⚙️ Configurações Globais")
         novo_limite = st.number_input("Limite máximo de usuários:", value=limite_max)
         if st.button("💾 SALVAR NOVO LIMITE"):
-            doc_escrita.worksheet("Config").update('A2', str(novo_limite))
-            st.cache_data.clear(); st.success("Limite atualizado!")
+            try:
+                doc_escrita.worksheet("Config").update('A2', str(novo_limite))
+                st.cache_data.clear(); st.success("Limite atualizado!")
+            except: st.error("Erro: Aba 'Config' não encontrada na planilha.")
 
-        st.divider()
-        st.subheader("👥 Gestão de Usuários")
-        
-        # 1. Busca por Usuário
+        st.divider(); st.subheader("👥 Gestão de Usuários")
         busca = st.text_input("🔍 Pesquisar por Nome ou E-mail:").strip().lower()
         
-        # 2. Aprovar Todos
+        # LOGICA OTIMIZADA PARA APROVAR TODOS SEM ERRO DE QUOTA
         if st.button("✅ ATIVAR TODOS OS USUÁRIOS"):
-            pendentes = [i+2 for i, u in enumerate(records_u) if str(u.get('STATUS','')).upper() != 'ATIVO']
-            if pendentes:
-                for row_idx in pendentes: sheet_u_escrita.update_cell(row_idx, 8, "ATIVO")
-                st.cache_data.clear(); st.success("Todos os usuários foram ativados!"); st.rerun()
-            else: st.info("Não há usuários para ativar.")
+            with st.spinner("Processando aprovação em lote..."):
+                num_total = len(records_u)
+                novos_status = [["ATIVO"]] * num_total
+                sheet_u_escrita.update(f'H2:H{num_total+1}', novos_status)
+                st.cache_data.clear(); st.success("Todos os usuários foram ativados com sucesso!"); st.rerun()
 
         for i, user in enumerate(records_u):
             nome_u = str(user.get('Nome','')).lower()
             email_u = str(user.get('Email','')).lower()
-            
             if busca == "" or busca in nome_u or busca in email_u:
                 with st.expander(f"{user.get('Graduação')} {user.get('Nome')} - {user.get('STATUS')}"):
                     c1, c2, c3 = st.columns([2, 1, 1])
@@ -215,11 +217,9 @@ try:
                             sheet_u_escrita.update_cell(i+2, 8, "INATIVO")
                             st.cache_data.clear(); st.rerun()
                     if c3.button("🗑️ EXCLUIR", key=f"del_{i}"):
-                        sheet_u_escrita.delete_rows(i+2)
-                        st.cache_data.clear(); st.rerun()
+                        sheet_u_escrita.delete_rows(i+2); st.cache_data.clear(); st.rerun()
 
     else:
-        # BARRA LATERAL RESTAURADA
         u = st.session_state.usuario_logado
         st.sidebar.markdown("### 👤 Usuário Conectado")
         st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
