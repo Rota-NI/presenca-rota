@@ -182,30 +182,26 @@ try:
         novo_limite = st.number_input("Limite máximo de usuários:", value=limite_max)
         if st.button("💾 SALVAR NOVO LIMITE"):
             sheet_config = doc_escrita.worksheet("Config")
-            # CORREÇÃO: Envio no formato [[valor]] para evitar erro 400
             sheet_config.update('A2', [[str(novo_limite)]])
             st.cache_data.clear(); st.success("Limite atualizado!"); st.rerun()
 
         st.divider(); st.subheader("👥 Gestão de Usuários")
         busca = st.text_input("🔍 Pesquisar por Nome ou E-mail:").strip().lower()
         
-        # ROTINA DE VARREDURA DE 3 SEGUNDOS SOLICITADA
-        if st.button("✅ ATIVAR TODOS OS USUÁRIOS"):
-            with st.spinner("Iniciando Ativação em Lote..."):
-                num = len(records_u)
-                if num > 0:
-                    status_list = [["ATIVO"]] * num
-                    sheet_u_escrita.update(f'H2:H{num+1}', status_list)
-                    st.info("Comando enviado. Aguardando 3 segundos para varredura de confirmação...")
-                    time_module.sleep(3) # Tempo de espera solicitado
-                    
-                    # Varredura de verificação
-                    check_records = sheet_u_escrita.get_all_records()
-                    falhas = [j+2 for j, r in enumerate(check_records) if str(r.get('STATUS','')).upper() != 'ATIVO']
-                    if falhas:
-                        for row in falhas: sheet_u_escrita.update_cell(row, 8, "ATIVO")
-                    
-                    st.cache_data.clear(); st.success("Varredura concluída! Todos ativos."); st.rerun()
+        c_adm1, c_adm2 = st.columns(2)
+        with c_adm1:
+            if st.button("✅ ATIVAR TODOS", use_container_width=True):
+                with st.spinner("Ativando..."):
+                    num = len(records_u)
+                    if num > 0:
+                        status_list = [["ATIVO"]] * num
+                        sheet_u_escrita.update(f'H2:H{num+1}', status_list)
+                        time_module.sleep(3)
+                        st.cache_data.clear(); st.rerun()
+        with c_adm2:
+            # BOTÃO DE ATUALIZAÇÃO MANUAL SOLICITADO
+            if st.button("🔄 SINCRONIZAR STATUS", use_container_width=True):
+                st.cache_data.clear(); st.rerun()
 
         for i, user in enumerate(records_u):
             nome_u, email_u = str(user.get('Nome','')).lower(), str(user.get('Email','')).lower()
@@ -214,7 +210,7 @@ try:
                     c1, c2, c3 = st.columns([2, 1, 1])
                     c1.write(f"📧 {user.get('Email')} | 📱 {user.get('TELEFONE')}")
                     is_ativo = str(user.get('STATUS')).upper() == 'ATIVO'
-                    if c2.checkbox("Liberar Acesso", value=is_ativo, key=f"adm_chk_{i}"):
+                    if c2.checkbox("Liberar", value=is_ativo, key=f"adm_chk_{i}"):
                         if not is_ativo: 
                             sheet_u_escrita.update_cell(i+2, 8, "ATIVO")
                             st.cache_data.clear(); st.rerun()
@@ -222,7 +218,7 @@ try:
                         if is_ativo:
                             sheet_u_escrita.update_cell(i+2, 8, "INATIVO")
                             st.cache_data.clear(); st.rerun()
-                    if c3.button("🗑️ EXCLUIR", key=f"del_{i}"):
+                    if c3.button("🗑️", key=f"del_{i}"):
                         sheet_u_escrita.delete_rows(i+2); st.cache_data.clear(); st.rerun()
 
     else:
@@ -249,7 +245,7 @@ try:
         elif aberto:
             if st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True):
                 agora = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
-                sheet_p_escrita.append_row([agora, u.get('ORIGEM') or "QG", u.get('Graduação'), u.get('Nome'), u.get('Lotação'), u.get('Email')])
+                sheet_p_escrita.append_row([agora, u.get('QG_RMCF_OUTROS') or "QG", u.get('Graduação'), u.get('Nome'), u.get('Lotação'), u.get('Email')])
                 st.cache_data.clear(); st.rerun()
         else: st.info("⌛ Lista fechada para novas inscrições.")
 
