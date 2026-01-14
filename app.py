@@ -87,14 +87,14 @@ st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered")
 # Script de Integração Telegram
 st.markdown('<script src="https://telegram.org/js/telegram-web-app.js"></script>', unsafe_allow_html=True)
 
-# CSS Ajustado para visual compacto no celular
+# CSS Ajustado EXCLUSIVAMENTE para comprimir a tabela
 st.markdown("""<style>
     .titulo-container { text-align: center; width: 100%; }
     .titulo-responsivo { font-size: clamp(1.2rem, 5vw, 2.2rem); font-weight: bold; margin-bottom: 20px; }
     .stCheckbox { background-color: #f8f9fa; padding: 5px; border-radius: 4px; border: 1px solid #eee; }
-    .tabela-responsiva { width: 100%; max-width: 100%; overflow-x: auto; }
-    table { width: 100% !important; font-size: 10px; border-collapse: collapse; }
-    th, td { text-align: center; padding: 4px !important; white-space: normal !important; word-wrap: break-word; }
+    .tabela-responsiva { width: 100%; overflow-x: auto; }
+    table { width: 100% !important; font-size: 10px; table-layout: fixed; border-collapse: collapse; }
+    th, td { text-align: center; padding: 2px !important; white-space: normal !important; word-wrap: break-word; }
     .footer { text-align: center; font-size: 11px; color: #888; margin-top: 40px; padding: 10px; border-top: 1px solid #eee; }
 </style>""", unsafe_allow_html=True)
 
@@ -129,10 +129,16 @@ try:
                         doc_escrita.worksheet("Usuarios").append_row([n_n, n_g, n_l, n_p, n_o, n_e])
                         st.cache_data.clear(); st.success("Cadastro realizado!")
         with t3:
-            st.markdown("### 📖 Guia de Uso")
-            st.success("📲 **ACESSO PELO TELEGRAM**")
-            st.info("No bot `@RotaNovaIguacuBot`, use o botão 'Abrir App Rota' no menu inferior.")
-            st.markdown("* **Horários:** Manhã (até 05h), Tarde (até 17h), Domingo (abre 19h).")
+            st.markdown("### 📖 Guia de Uso Rápido")
+            st.info("**1. Cadastro e Login:** Use seu e-mail funcional/pessoal como identificador único.")
+            st.markdown("""
+            **2. Regras de Horário:**
+            * **Manhã:** Inscrições abertas até às 05:00h.
+            * **Tarde:** Inscrições abertas até às 17:00h.
+            * **Finais de Semana:** Abrem domingo às 19:00h.
+            
+            **3. Ordenação da Lista:** Organizada por Graduação e Ordem de Inscrição.
+            """)
         with t4:
             e_r = st.text_input("E-mail cadastrado:")
             if st.button("RECUPERAR DADOS", use_container_width=True):
@@ -174,7 +180,7 @@ try:
                         if len(r) >= 6 and str(r[5]).strip().lower() == email_logado:
                             sheet_p_escrita.delete_rows(idx + 1)
                             st.cache_data.clear(); st.rerun()
-        else: st.info("⌛ Lista fechada para inscrições.")
+        else: st.info("⌛ Lista fechada para novas inscrições.")
 
         if ja and pos <= 3 and janela_conf:
             st.divider(); st.subheader("📋 CONFERÊNCIA")
