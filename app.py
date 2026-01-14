@@ -127,7 +127,7 @@ try:
         with t3:
             st.markdown("### 📖 Guia de Uso Rápido")
             # Adicionado Instruções de Instalação
-            st.success("📲 **COMO INSTALAR NO CELULAR (SEM NAVEGADOR)**")
+            st.success("📲 **COMO INSTALAR NO CELULAR (sem navegador)**")
             c_inst1, c_inst2 = st.columns(2)
             with c_inst1:
                 st.markdown("**Android (Chrome):**")
