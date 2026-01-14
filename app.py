@@ -9,6 +9,7 @@ from fpdf import FPDF
 import urllib.parse
 import time as time_module
 import random
+import re
 
 # ==========================================================
 # CONFIGURAÇÃO DE ACESSO
@@ -23,6 +24,39 @@ WS_USUARIOS = "Usuarios"
 WS_CONFIG = "Config"
 
 FUSO_BR = pytz.timezone("America/Sao_Paulo")
+
+
+# ==========================================================
+# TELEFONE: normalização + formatação (xx) xxxxx.xxxx
+# ==========================================================
+def tel_only_digits(s: str) -> str:
+    return re.sub(r"\D+", "", str(s or ""))
+
+def tel_format_br(digits: str) -> str:
+    """
+    Formata 11 dígitos como: (xx) xxxxx.xxxx
+    Se tiver menos, retorna o que der sem quebrar.
+    """
+    d = tel_only_digits(digits)
+    if len(d) >= 2:
+        ddd = d[:2]
+        rest = d[2:]
+    else:
+        return d
+
+    if len(rest) >= 9:
+        p1 = rest[:5]
+        p2 = rest[5:9]
+        return f"({ddd}) {p1}.{p2}"
+    elif len(rest) > 5:
+        p1 = rest[:5]
+        p2 = rest[5:]
+        return f"({ddd}) {p1}.{p2}"
+    else:
+        return f"({ddd}) {rest}"
+
+def tel_is_valid_11(s: str) -> bool:
+    return len(tel_only_digits(s)) == 11
 
 
 # ==========================================================
@@ -187,6 +221,98 @@ def aplicar_ordenacao(df):
 
 
 # ==========================================================
+# PDF “mais apresentado”
+# ==========================================================
+class PDFRelatorio(FPDF):
+    def __init__(self, titulo="LISTA DE PRESENÇA", sub=None):
+        super().__init__(orientation="P", unit="mm", format="A4")
+        self.titulo = titulo
+        self.sub = sub or ""
+        self.set_auto_page_break(auto=True, margin=12)
+        self.alias_nb_pages()
+
+    def header(self):
+        # topo
+        self.set_font("Arial", "B", 14)
+        self.cell(0, 8, self.titulo, ln=True, align="C")
+
+        self.set_font("Arial", "", 9)
+        if self.sub:
+            self.cell(0, 5, self.sub, ln=True, align="C")
+        self.ln(2)
+
+        # linha separadora
+        self.set_draw_color(180, 180, 180)
+        self.line(10, self.get_y(), 200, self.get_y())
+        self.ln(4)
+
+    def footer(self):
+        self.set_y(-12)
+        self.set_font("Arial", "", 8)
+        self.set_text_color(90, 90, 90)
+        self.cell(0, 6, f"Página {self.page_no()}/{{nb}}  •  Rota Nova Iguaçu", align="C")
+
+def gerar_pdf_apresentado(df_o: pd.DataFrame, resumo: dict) -> bytes:
+    agora = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
+    sub = f"Emitido em: {agora}"
+
+    pdf = PDFRelatorio(titulo="ROTA NOVA IGUAÇU - LISTA DE PRESENÇA", sub=sub)
+    pdf.add_page()
+
+    # Bloco resumo
+    pdf.set_font("Arial", "B", 10)
+    pdf.set_fill_color(240, 240, 240)
+    pdf.cell(0, 8, "RESUMO", ln=True, fill=True)
+
+    pdf.set_font("Arial", "", 9)
+    insc = resumo.get("inscritos", 0)
+    vagas = resumo.get("vagas", 38)
+    exc = max(0, insc - vagas)
+    sobra = max(0, vagas - insc)
+
+    pdf.cell(0, 6, f"Inscritos: {insc}    |    Vagas: {vagas}    |    Sobra: {sobra}    |    Excedentes: {exc}", ln=True)
+    pdf.ln(2)
+
+    # Tabela
+    headers = ["Nº", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
+    # Larguras pensadas pra A4
+    col_w = [14, 28, 88, 60]
+
+    pdf.set_font("Arial", "B", 9)
+    pdf.set_fill_color(30, 30, 30)
+    pdf.set_text_color(255, 255, 255)
+
+    for i, h in enumerate(headers):
+        pdf.cell(col_w[i], 7, h, border=0, align="C", fill=True)
+    pdf.ln()
+
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Arial", "", 8)
+
+    # Zebra + destaque excedentes
+    for idx, (_, r) in enumerate(df_o.iterrows()):
+        is_exc = "Exc-" in str(r.get("Nº", ""))
+        if is_exc:
+            pdf.set_fill_color(255, 235, 238)  # leve vermelho
+        else:
+            pdf.set_fill_color(245, 245, 245) if idx % 2 == 0 else pdf.set_fill_color(255, 255, 255)
+
+        pdf.cell(col_w[0], 6, str(r.get("Nº", "")), border=0, fill=True)
+        pdf.cell(col_w[1], 6, str(r.get("GRADUAÇÃO", "")), border=0, fill=True)
+        pdf.cell(col_w[2], 6, str(r.get("NOME", ""))[:50], border=0, fill=True)
+        pdf.cell(col_w[3], 6, str(r.get("LOTAÇÃO", ""))[:42], border=0, fill=True)
+        pdf.ln()
+
+    pdf.ln(4)
+    pdf.set_font("Arial", "I", 8)
+    pdf.set_text_color(80, 80, 80)
+    pdf.multi_cell(0, 5, "Observação: os itens marcados como 'Exc-xx' representam excedentes além do limite de 38 vagas.")
+    pdf.set_text_color(0, 0, 0)
+
+    return pdf.output(dest="S").encode("latin-1")
+
+
+# ==========================================================
 # INTERFACE
 # ==========================================================
 st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered")
@@ -215,7 +341,12 @@ if "conf_ativa" not in st.session_state:
 if "_force_refresh_presenca" not in st.session_state:
     st.session_state._force_refresh_presenca = False
 if "_adm_first_load" not in st.session_state:
-    st.session_state._adm_first_load = False  # controla refresh automático 1x
+    st.session_state._adm_first_load = False
+if "_tel_login_fmt" not in st.session_state:
+    st.session_state._tel_login_fmt = ""
+if "_tel_cad_fmt" not in st.session_state:
+    st.session_state._tel_cad_fmt = ""
+
 
 try:
     # Leitura leve pro público
@@ -232,25 +363,38 @@ try:
         with t1:
             with st.form("form_login"):
                 l_e = st.text_input("E-mail:")
-                l_t = st.text_input("Telefone:")
+
+                # telefone com “máscara” (formatar ao digitar)
+                raw_tel_login = st.text_input("Telefone (xx) xxxxx.xxxx:", value=st.session_state._tel_login_fmt)
+                fmt_tel_login = tel_format_br(raw_tel_login)
+                st.session_state._tel_login_fmt = fmt_tel_login  # mantém formatado no campo
+
                 l_s = st.text_input("Senha:", type="password")
+
                 if st.form_submit_button("ENTRAR", use_container_width=True):
-                    u_a = next(
-                        (u for u in records_u_public
-                         if str(u.get("Email", "")).strip().lower() == l_e.strip().lower()
-                         and str(u.get("Senha", "")) == str(l_s)
-                         and str(u.get("TELEFONE", "")).strip() == l_t.strip()),
-                        None
-                    )
-                    if u_a:
-                        status_user = str(u_a.get("STATUS", "")).strip().upper()
-                        if status_user == "ATIVO":
-                            st.session_state.usuario_logado = u_a
-                            st.rerun()
-                        else:
-                            st.error("Acesso negado. Aguardando aprovação do Administrador.")
+                    if not tel_is_valid_11(fmt_tel_login):
+                        st.error("Telefone inválido. Use DDD + 9 dígitos (ex: (21) 98765.4321).")
                     else:
-                        st.error("Dados incorretos.")
+                        # compara por dígitos para não depender da formatação
+                        tel_login_digits = tel_only_digits(fmt_tel_login)
+
+                        u_a = next(
+                            (u for u in records_u_public
+                             if str(u.get("Email", "")).strip().lower() == l_e.strip().lower()
+                             and str(u.get("Senha", "")) == str(l_s)
+                             and tel_only_digits(u.get("TELEFONE", "")) == tel_login_digits),
+                            None
+                        )
+
+                        if u_a:
+                            status_user = str(u_a.get("STATUS", "")).strip().upper()
+                            if status_user == "ATIVO":
+                                st.session_state.usuario_logado = u_a
+                                st.rerun()
+                            else:
+                                st.error("Acesso negado. Aguardando aprovação do Administrador.")
+                        else:
+                            st.error("Dados incorretos.")
 
         with t2:
             if len(records_u_public) >= limite_max:
@@ -259,7 +403,11 @@ try:
                 with st.form("form_novo_cadastro"):
                     n_n = st.text_input("Nome de Escala:")
                     n_e = st.text_input("E-mail:")
-                    n_t = st.text_input("Telefone:")
+
+                    raw_tel_cad = st.text_input("Telefone (xx) xxxxx.xxxx:", value=st.session_state._tel_cad_fmt)
+                    fmt_tel_cad = tel_format_br(raw_tel_cad)
+                    st.session_state._tel_cad_fmt = fmt_tel_cad
+
                     n_g = st.selectbox("Graduação:", ["TCEL", "MAJ", "CAP", "1º TEN", "2º TEN", "SUBTEN", "1º SGT",
                                                       "2º SGT", "3º SGT", "CB", "SD", "FC COM", "FC TER"])
                     n_l = st.text_input("Lotação:")
@@ -267,11 +415,15 @@ try:
                     n_p = st.text_input("Senha:", type="password")
 
                     if st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True):
-                        if any(str(u.get("Email", "")).strip().lower() == n_e.strip().lower() for u in records_u_public):
+                        if not tel_is_valid_11(fmt_tel_cad):
+                            st.error("Telefone inválido. Use DDD + 9 dígitos (ex: (21) 98765.4321).")
+                        elif any(str(u.get("Email", "")).strip().lower() == n_e.strip().lower() for u in records_u_public):
                             st.error("E-mail já cadastrado.")
                         else:
-                            gs_call(sheet_u_escrita.append_row, [n_n, n_g, n_l, n_p, n_o, n_e, n_t, "PENDENTE"])
-                            # invalida caches de usuário (público e adm), sem limpar tudo
+                            # guarda telefone formatado (bonito) mas valida por dígitos
+                            gs_call(sheet_u_escrita.append_row, [
+                                n_n, n_g, n_l, n_p, n_o, n_e, fmt_tel_cad, "PENDENTE"
+                            ])
                             buscar_usuarios_cadastrados.clear()
                             buscar_usuarios_admin.clear()
                             st.success("Cadastro realizado! Aguardando aprovação do Administrador.")
@@ -287,12 +439,6 @@ try:
             st.markdown("**LINK PARA NAVEGADOR:** https://presenca-rota-gbiwh9bjrwdergzc473xyg.streamlit.app/")
             st.divider()
             st.info("**CADASTRO E LOGIN:** Use seu e-mail como identificador único.")
-            st.markdown("""
-            **1. Regras de Horário:**
-            * **Manhã:** Inscrições abertas até às 05:00h. Reabre às 07:00h.
-            * **Tarde:** Inscrições abertas até às 17:00h. Reabre às 19:00h.
-            * **Finais de Semana:** Abrem domingo às 19:00h.
-            """)
 
         with t4:
             e_r = st.text_input("E-mail cadastrado:")
@@ -310,7 +456,7 @@ try:
                 if st.form_submit_button("ACESSAR PAINEL"):
                     if ad_u == "Administrador" and ad_s == "Administrador@123":
                         st.session_state.is_admin = True
-                        st.session_state._adm_first_load = True  # ao entrar, vamos refrescar 1x
+                        st.session_state._adm_first_load = True
                         st.rerun()
                     else:
                         st.error("ADM inválido.")
@@ -326,12 +472,10 @@ try:
             st.session_state._adm_first_load = False
             st.rerun()
 
-        # refresh automático 1x ao entrar (garante usuário recém-criado)
         if st.session_state._adm_first_load:
             buscar_usuarios_admin.clear()
             st.session_state._adm_first_load = False
 
-        # lê com TTL curto
         records_u = buscar_usuarios_admin()
 
         cA, cB = st.columns([1, 1])
@@ -340,7 +484,7 @@ try:
                 buscar_usuarios_admin.clear()
                 st.rerun()
         with cB:
-            st.caption("ADM lê mais fresco (TTL=3s) sem estourar quota.")
+            st.caption("ADM lê mais fresco (TTL=3s).")
 
         st.subheader("⚙️ Configurações Globais")
         novo_limite = st.number_input("Limite máximo de usuários:", value=int(limite_max))
@@ -360,7 +504,6 @@ try:
                 end = len(records_u) + 1
                 rng = f"H{start}:H{end}"
                 gs_call(sheet_u_escrita.update, rng, [["ATIVO"]] * len(records_u))
-                # invalida caches de usuário
                 buscar_usuarios_admin.clear()
                 buscar_usuarios_cadastrados.clear()
                 st.session_state.clear()
@@ -400,7 +543,7 @@ try:
                 del st.session_state[key]
             st.rerun()
         st.sidebar.markdown("---")
-        st.sidebar.caption("Desenvolvido por:           MAJ ANDRÉ AGUIAR - CAES")
+        st.sidebar.caption("Desenvolvido por: MAJ ANDRÉ AGUIAR - CAES")
 
         sheet_p_escrita = ws_presenca()
 
@@ -476,30 +619,12 @@ try:
 
             c1, c2 = st.columns(2)
             with c1:
-                pdf = FPDF()
-                pdf.add_page()
-                pdf.set_font("Arial", "B", 12)
-                pdf.cell(190, 10, "LISTA DE PRESENÇA", ln=True, align="C")
-                pdf.ln(5)
-
-                headers = ["Nº", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
-                col_widths = [15, 25, 80, 70]
-                for h_idx, h in enumerate(headers):
-                    pdf.cell(col_widths[h_idx], 8, h, border=1, align="C")
-                pdf.ln()
-                pdf.set_font("Arial", "", 8)
-
-                for _, r in df_o.iterrows():
-                    pdf.cell(col_widths[0], 8, str(r["Nº"]), border=1)
-                    pdf.cell(col_widths[1], 8, str(r["GRADUAÇÃO"]), border=1)
-                    pdf.cell(col_widths[2], 8, str(r["NOME"])[:45], border=1)
-                    pdf.cell(col_widths[3], 8, str(r["LOTAÇÃO"])[:40], border=1)
-                    pdf.ln()
-
+                resumo = {"inscritos": insc, "vagas": 38}
+                pdf_bytes = gerar_pdf_apresentado(df_o, resumo)
                 st.download_button(
-                    "📄 PDF",
-                    pdf.output(dest="S").encode("latin-1"),
-                    "lista.pdf",
+                    "📄 PDF (relatório)",
+                    pdf_bytes,
+                    "lista_rota_nova_iguacu.pdf",
                     use_container_width=True
                 )
 
