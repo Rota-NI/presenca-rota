@@ -112,49 +112,57 @@ try:
         with t1:
             with st.form("form_login"):
                 l_e = st.text_input("E-mail:")
-                l_t = st.text_input("Telefone (Ex: 21999999999):") # Novo campo de login
+                l_t = st.text_input("Telefone (Apenas números):") # Campo incluído
                 l_s = st.text_input("Senha:", type="password")
                 if st.form_submit_button("ENTRAR", use_container_width=True):
-                    # Validação tripla: Email, Senha e Telefone
+                    # Validação tripla solicitada
                     u_a = next((u for u in records_u if str(u.get('Email','')).strip().lower() == l_e.strip().lower() 
-                                and str(u.get('Senha','')) == str(l_s) 
+                                and str(u.get('Senha','')) == str(l_s)
                                 and str(u.get('Telefone','')).strip() == l_t.strip()), None)
                     if u_a: st.session_state.usuario_logado = u_a; st.rerun()
-                    else: st.error("Dados de acesso incorretos (verifique E-mail, Senha e Telefone).")
+                    else: st.error("E-mail, Telefone ou Senha incorretos.")
         with t2:
+            # Trava de 100 usuários solicitada
             if len(records_u) >= 100:
-                st.warning("⚠️ Limite de 100 usuários cadastrados atingido.")
+                st.warning("⚠️ Limite de 100 usuários cadastrados atingido. Contate o administrador.")
             else:
                 with st.form("form_novo_cadastro"):
                     n_n, n_e = st.text_input("Nome de Escala:"), st.text_input("E-mail (Login):")
-                    n_t = st.text_input("Telefone (Apenas números):") # Novo campo de cadastro
+                    n_t = st.text_input("Telefone (Ex: 21999999999):") # Campo incluído
                     n_g = st.selectbox("Graduação:", ["TCEL", "MAJ", "CAP", "1º TEN", "2º TEN", "SUBTEN", "1º SGT", "2º SGT", "3º SGT", "CB", "SD", "FC COM", "FC TER"])
                     n_l, n_o, n_p = st.text_input("Lotação:"), st.selectbox("Origem:", ["QG", "RMCF", "OUTROS"]), st.text_input("Senha:", type="password")
                     if st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True):
                         if any(str(u.get('Email','')).strip().lower() == n_e.strip().lower() for u in records_u): st.error("E-mail já cadastrado.")
                         else:
-                            # Salva incluindo o Telefone
+                            # Salva incluindo o Telefone na coluna G da planilha Usuarios
                             doc_escrita.worksheet("Usuarios").append_row([n_n, n_g, n_l, n_p, n_o, n_e, n_t])
                             st.cache_data.clear(); st.success("Cadastro realizado!")
         with t3:
+            # SEU TEXTO ORIGINAL DE INSTRUÇÕES PRESERVADO
             st.markdown("### 📖 Guia de Uso")
             st.success("📲 **COMO INSTALAR (TELA INICIAL)**")
             st.markdown("**No Chrome (Android):** Toque nos 3 pontos (⋮) e em 'Instalar Aplicativo'.")
             st.markdown("**No Safari (iPhone):** Toque em Compartilhar (⬆️) e em 'Adicionar à Tela de Início'.")
             st.markdown("**No Telegram:** Procure o bot `@RotaNovaIguacuBot` e toque no botão 'Abrir App Rota' no menu.")
+            st.markdown("**QR CODE:** https://drive.google.com/file/d/1RU1i0u1hSqdfaL3H7HUaeV4hRvR2cROf/view?usp=sharing")
+            st.markdown("**LINK PARA NAVEGADOR:** https://presenca-rota-gbiwh9bjrwdergzc473xyg.streamlit.app/")
             st.divider()
-            st.info("**CADASTRO E LOGIN:** Use seu E-mail e Telefone como identificadores.")
+            st.info("**CADASTRO E LOGIN:** Use seu e-mail como identificador único.")
             st.markdown("""
             **1. Regras de Horário:**
             * **Manhã:** Inscrições abertas até às 05:00h. Reabre às 07:00h.
             * **Tarde:** Inscrições abertas até às 17:00h. Reabre às 19:00h.
             * **Finais de Semana:** Abrem domingo às 19:00h.
+            
+            **2. Observação:**
+            * Nos períodos em que a lista ficar suspensa para conferência (05:00h às 07:00h / 17:00h às 19:00h), os três PPMM que estiverem no topo da lista terão acesso à lista de check up (botão no topo da lista) para tirar a falta de quem estará entrando no ônibus. O mais antigo assume e na ausência dele o seu sucessor assume.
+            * Após o horário de 06:50h e de 18:50h, a lista será automaticamente zerada para que o novo ciclo da lista possa ocorrer. Sendo assim, caso queira manter um histórico de viagem, antes desses horários, faça o download do pdf e/ou do resumo do W.Zap.
             """)
         with t4:
             e_r = st.text_input("E-mail cadastrado:")
             if st.button("RECUPERAR DADOS", use_container_width=True):
                 u_r = next((u for u in records_u if str(u.get('Email', '')).strip().lower() == e_r.strip().lower()), None)
-                if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')} | Tel: {u_r.get('Telefone')}")
+                if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')}")
                 else: st.error("E-mail não encontrado.")
     else:
         u = st.session_state.usuario_logado
