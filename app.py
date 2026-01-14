@@ -81,18 +81,15 @@ def aplicar_ordenacao_e_numeracao(df):
     df['dt_temp'] = pd.to_datetime(df['DATA_HORA'], dayfirst=True)
     df = df.sort_values(by=['is_fc', 'p_orig', 'p_grad', 'dt_temp']).reset_index(drop=True)
     
-    # Gerar numeração
     df.insert(0, 'Nº', [str(i+1) if i < 38 else f"Exc-{i-37:02d}" for i in range(len(df))])
     
-    # Criar uma cópia para exibição com formatação HTML
-    df_html = df.copy()
-    for i, row in df_html.iterrows():
+    df_visual = df.copy()
+    for i, row in df_visual.iterrows():
         if "Exc-" in str(row['Nº']):
-            # Aplica negrito e cor vermelha via HTML nas células da linha excedente
-            for col in df_html.columns:
-                df_html.at[i, col] = f"<span style='color: #d32f2f; font-weight: bold;'>{row[col]}</span>"
+            for col in df_visual.columns:
+                df_visual.at[i, col] = f"<span style='color: #d32f2f; font-weight: bold;'>{row[col]}</span>"
     
-    return df.drop(columns=['is_fc', 'p_orig', 'p_grad', 'dt_temp']), df_html.drop(columns=['is_fc', 'p_orig', 'p_grad', 'dt_temp'])
+    return df.drop(columns=['is_fc', 'p_orig', 'p_grad', 'dt_temp']), df_visual.drop(columns=['is_fc', 'p_orig', 'p_grad', 'dt_temp'])
 
 # --- INTERFACE ---
 st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered")
@@ -119,12 +116,11 @@ if 'conferencia_ativa' not in st.session_state:
 try:
     dados_p, records_u = buscar_dados_planilha()
     if dados_p is None:
-        st.warning("⚠️ Sincronizando dados...")
+        st.warning("⚠️ Sincronizando dados com o servidor... Aguarde.")
         st.stop()
 
     doc_escrita = conectar_escrita()
     sheet_p_escrita = doc_escrita.sheet1
-    sheet_u_escrita = doc_escrita.worksheet("Usuarios")
 
     if st.session_state.usuario_logado is None:
         t1, t2, t3 = st.tabs(["Login", "Cadastro", "Esqueci a Senha"])
@@ -150,8 +146,7 @@ try:
             st.rerun()
         
         aberto = verificar_status_e_limpar(sheet_p_escrita, dados_p)
-        df_original = pd.DataFrame()
-        df_visual = pd.DataFrame()
+        df_original, df_visual = pd.DataFrame(), pd.DataFrame()
         ja, posicao_usuario = False, 999
         
         if len(dados_p) > 1:
@@ -191,7 +186,6 @@ try:
                 st.cache_data.clear()
                 st.rerun()
             
-            # Exibição da tabela usando a versão formatada (df_visual) com escape=False
             html_tab = f'<div class="tabela-responsiva">{df_visual.to_html(index=False, justify="center", border=0, escape=False)}</div>'
             st.write(html_tab, unsafe_allow_html=True)
             
@@ -224,4 +218,4 @@ try:
     st.markdown('<div class="footer">Desenvolvido por: <b>MAJ ANDRÉ AGUIAR - CAES</b></div>', unsafe_allow_html=True)
 
 except Exception as e:
-    st.error(f"Erro de conexão. Detalhe: {e}")
+    st.error(f"Erro de conexão. Aguarde 10 segundos. Detalhe: {e}")
