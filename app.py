@@ -18,20 +18,31 @@ st.markdown("<h1 style='text-align: center;'>🚌 ROTA NOVA IGUAÇU</h1>", unsaf
 try:
     sheet = conectar()
     
-    # --- FORMULÁRIO ---
+    # --- FORMULÁRIO COM MAIS CAMPOS ---
     with st.form("meu_formulario", clear_on_submit=True):
-        nome = st.text_input("Nome de Escala:")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            qg_opcoes = st.selectbox("Destino:", ["QG", "RMCF", "OUTROS"])
+            graduacao = st.selectbox("Graduação:", ["Cel", "TCel", "Maj", "Cap", "Ten", "Sub", "Sgt", "Cb", "Sd"])
+        
+        with col2:
+            nome = st.text_input("Nome de Escala:")
+            lotacao = st.text_input("Lotação (Unidade):")
+            
         submit = st.form_submit_button("SALVAR PRESENÇA")
         
         if submit:
-            if nome:
+            if nome and lotacao:
                 agora = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-                sheet.append_row([agora, nome])
+                # Salva na ordem das colunas da sua planilha
+                sheet.append_row([agora, qg_opcoes, graduacao, nome, lotacao])
                 st.success(f"Presença de {nome} registrada!")
+                st.rerun() # Atualiza a tela para mostrar o novo nome na tabela
             else:
-                st.error("Digite seu nome.")
+                st.error("Por favor, preencha o Nome e a Lotação.")
 
-    # --- MOSTRAR TABELA (NOVIDADE) ---
+    # --- MOSTRAR TABELA ---
     st.subheader("Pessoas Presentes")
     dados = sheet.get_all_values()
     if len(dados) > 1:
