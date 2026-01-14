@@ -7,7 +7,7 @@ import pytz
 from fpdf import FPDF
 import urllib.parse
 
-# --- CONFIGURAÇÃO DE ACESSO COM CACHE DE ALTA PERFORMANCE ---
+# --- CONFIGURAÇÃO DE ACESSO ---
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
 @st.cache_resource
@@ -22,8 +22,7 @@ def buscar_usuarios_cadastrados():
         client = conectar_gsheets()
         sheet_u = client.open("ListaPresenca").worksheet("Usuarios")
         return sheet_u.get_all_records()
-    except:
-        return []
+    except: return []
 
 @st.cache_data(ttl=15)
 def buscar_presenca_atualizada():
@@ -31,8 +30,7 @@ def buscar_presenca_atualizada():
         client = conectar_gsheets()
         sheet_p = client.open("ListaPresenca").sheet1
         return sheet_p.get_all_values()
-    except:
-        return None
+    except: return None
 
 def conectar_escrita_direta():
     return conectar_gsheets().open("ListaPresenca")
@@ -42,7 +40,6 @@ def verificar_status_e_limpar(sheet_p, dados_p):
     agora = datetime.now(fuso_br)
     hora_atual, dia_semana = agora.time(), agora.weekday()
 
-    # Lógica de Limpeza Automática
     if hora_atual >= time(18, 50): marco = agora.replace(hour=18, minute=50, second=0, microsecond=0)
     elif hora_atual >= time(6, 50): marco = agora.replace(hour=6, minute=50, second=0, microsecond=0)
     else: marco = (agora - timedelta(days=1)).replace(hour=18, minute=50, second=0, microsecond=0)
@@ -52,20 +49,15 @@ def verificar_status_e_limpar(sheet_p, dados_p):
             ultima_str = dados_p[-1][0]
             ultima_dt = fuso_br.localize(datetime.strptime(ultima_str, '%d/%m/%Y %H:%M:%S'))
             if ultima_dt < marco:
-                sheet_p.resize(rows=1)
-                sheet_p.resize(rows=100)
-                st.cache_data.clear()
-                st.rerun()
+                sheet_p.resize(rows=1); sheet_p.resize(rows=100)
+                st.cache_data.clear(); st.rerun()
         except: pass
     
-    # Status Aberto/Fechado
     is_aberto = (dia_semana == 6 and hora_atual >= time(19, 0)) or \
                 (dia_semana in [0, 1, 2, 3] and (hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(17, 0) or hora_atual >= time(19, 0))) or \
                 (dia_semana == 4 and time(7, 0) <= hora_atual <= time(17, 0))
     
-    # Nova condição: Janela de Conferência (Lista Fechada para embarque)
     janela_conferencia = (time(5, 0) < hora_atual < time(7, 0)) or (time(17, 0) < hora_atual < time(19, 0))
-    
     return is_aberto, janela_conferencia
 
 def aplicar_ordenacao(df):
@@ -91,7 +83,6 @@ def aplicar_ordenacao(df):
 
 # --- INTERFACE ---
 st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered")
-
 st.markdown("""<style>
     .titulo-container { text-align: center; width: 100%; }
     .titulo-responsivo { font-size: clamp(1.2rem, 5vw, 2.2rem); font-weight: bold; margin-bottom: 20px; }
@@ -107,7 +98,6 @@ if 'conf_ativa' not in st.session_state: st.session_state.conf_ativa = False
 try:
     records_u = buscar_usuarios_cadastrados()
     dados_p = buscar_presenca_atualizada()
-    
     doc_escrita = conectar_escrita_direta()
     sheet_p_escrita = doc_escrita.sheet1
 
@@ -123,22 +113,17 @@ try:
                     else: st.error("E-mail ou senha incorretos.")
         with t2:
             with st.form("form_novo_cadastro"):
-                n_nome = st.text_input("Nome de Escala:")
-                n_email = st.text_input("E-mail (Será seu Login):")
+                n_nome, n_email = st.text_input("Nome de Escala:"), st.text_input("E-mail (Login):")
                 n_grad = st.selectbox("Graduação:", ["TCEL", "MAJ", "CAP", "1º TEN", "2º TEN", "SUBTEN", "1º SGT", "2º SGT", "3º SGT", "CB", "SD", "FC COM", "FC TER"])
-                n_lot = st.text_input("Lotação:")
-                n_orig = st.selectbox("Origem Padrão:", ["QG", "RMCF", "OUTROS"])
-                n_pass = st.text_input("Crie uma Senha:", type="password")
+                n_lot, n_orig, n_pass = st.text_input("Lotação:"), st.selectbox("Origem:", ["QG", "RMCF", "OUTROS"]), st.text_input("Senha:", type="password")
                 if st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True):
-                    if any(str(u.get('Email','')).strip().lower() == n_email.strip().lower() for u in records_u):
-                        st.error("E-mail já cadastrado.")
+                    if any(str(u.get('Email','')).strip().lower() == n_email.strip().lower() for u in records_u): st.error("E-mail já cadastrado.")
                     else:
                         doc_escrita.worksheet("Usuarios").append_row([n_nome, n_grad, n_lot, n_pass, n_orig, n_email])
-                        st.cache_data.clear()
-                        st.success("Cadastro realizado! Use a aba Login.")
+                        st.cache_data.clear(); st.success("Cadastro realizado!")
         with t3:
             e_recup = st.text_input("Digite o e-mail cadastrado:")
-            if st.button("RECUPERAR MEUS DADOS", use_container_width=True):
+            if st.button("RECUPERAR DADOS", use_container_width=True):
                 u_r = next((u for u in records_u if str(u.get('Email', '')).strip().lower() == e_recup.strip().lower()), None)
                 if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')}")
                 else: st.error("E-mail não encontrado.")
@@ -175,11 +160,8 @@ try:
                         if len(r) >= 6 and str(r[5]).strip().lower() == email_logado:
                             sheet_p_escrita.delete_rows(idx + 1)
                             st.cache_data.clear(); st.rerun()
-        else: 
-            st.info("⌛ Lista fechada para novas inscrições.")
+        else: st.info("⌛ Lista fechada para novas inscrições.")
 
-        # --- CONFERÊNCIA DE EMBARQUE ---
-        # Só aparece se for um dos 3 primeiros E estiver dentro do horário de conferência (fechado)
         if ja and pos <= 3 and janela_conf:
             st.divider(); st.subheader("📋 CONFERÊNCIA DE EMBARQUE")
             if st.button("📝 ABRIR / FECHAR PAINEL", use_container_width=True):
@@ -196,18 +178,31 @@ try:
             
             c1, c2 = st.columns(2)
             with c1:
+                # --- GERAÇÃO CORRIGIDA DO PDF ---
                 pdf = FPDF()
-                pdf.add_page(); pdf.set_font("Arial", "B", 12)
-                pdf.cell(190, 10, "LISTA DE PRESENÇA", ln=True, align="C")
+                pdf.add_page()
+                pdf.set_font("Arial", "B", 12)
+                pdf.cell(190, 10, "LISTA DE PRESENÇA - ROTA NOVA IGUAÇU", ln=True, align="C")
+                pdf.ln(5)
                 pdf.set_font("Arial", "B", 8)
-                for h in ["Nº", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]: pdf.cell(45, 8, h, border=1)
-                st.download_button("📄 PDF", pdf.output(dest="S").encode("latin-1"), "lista.pdf", use_container_width=True)
+                # Cabeçalhos e Larguras
+                headers = ["Nº", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
+                col_widths = [15, 25, 80, 70]
+                for i, h in enumerate(headers): pdf.cell(col_widths[i], 8, h, border=1, align="C")
+                pdf.ln()
+                # Preenchimento das Linhas
+                pdf.set_font("Arial", "", 8)
+                for _, r in df_o.iterrows():
+                    pdf.cell(col_widths[0], 8, str(r['Nº']), border=1, align="C")
+                    pdf.cell(col_widths[1], 8, str(r['GRADUAÇÃO']), border=1, align="C")
+                    pdf.cell(col_widths[2], 8, str(r['NOME'])[:45], border=1) # Limita caracteres para não vazar
+                    pdf.cell(col_widths[3], 8, str(r['LOTAÇÃO'])[:40], border=1)
+                    pdf.ln()
+                st.download_button("📄 PDF", pdf.output(dest="S").encode("latin-1"), "lista_presenca.pdf", use_container_width=True)
             with c2:
                 txt_w = f"*🚌 LISTA DE PRESENÇA*\n\n"
                 for _, r in df_o.iterrows(): txt_w += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']}\n"
                 st.markdown(f'<a href="https://wa.me/?text={urllib.parse.quote(txt_w)}" target="_blank"><button style="width:100%; height:38px; background-color:#25D366; color:white; border:none; border-radius:4px; font-weight:bold;">🟢 WHATSAPP</button></a>', unsafe_allow_html=True)
 
     st.markdown(f'<div class="footer">Desenvolvido por: <b>MAJ ANDRÉ AGUIAR - CAES</b></div>', unsafe_allow_html=True)
-
-except Exception as e:
-    st.error(f"⚠️ Erro de conexão com o servidor. Detalhe: {e}")
+except Exception as e: st.error(f"⚠️ Erro: {e}")
