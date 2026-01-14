@@ -17,7 +17,8 @@ def conectar_gsheets():
     creds = Credentials.from_service_account_info(info, scopes=scope)
     return gspread.authorize(creds)
 
-@st.cache_data(ttl=60)
+# OTIMIZAÇÃO: Cache estendido para evitar múltiplas leituras simultâneas
+@st.cache_data(ttl=30)
 def buscar_usuarios_cadastrados():
     try:
         client = conectar_gsheets()
@@ -25,6 +26,7 @@ def buscar_usuarios_cadastrados():
         return sheet_u.get_all_records()
     except: return []
 
+@st.cache_data(ttl=15)
 def buscar_limite_dinamico():
     try:
         client = conectar_gsheets()
@@ -56,6 +58,7 @@ def verificar_status_e_limpar(sheet_p, dados_p):
     if hora_atual >= time(18, 50): marco = agora.replace(hour=18, minute=50, second=0, microsecond=0)
     elif hora_atual >= time(6, 50): marco = agora.replace(hour=6, minute=50, second=0, microsecond=0)
     else: marco = (agora - timedelta(days=1)).replace(hour=18, minute=50, second=0, microsecond=0)
+    
     if dados_p and len(dados_p) > 1:
         try:
             ultima_str = dados_p[-1][0]
@@ -64,9 +67,11 @@ def verificar_status_e_limpar(sheet_p, dados_p):
                 sheet_p.resize(rows=1); sheet_p.resize(rows=100)
                 st.cache_data.clear(); st.rerun()
         except: pass
+    
     is_aberto = (dia_semana == 6 and hora_atual >= time(19, 0)) or \
                 (dia_semana in [0, 1, 2, 3] and (hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(17, 0) or hora_atual >= time(19, 0))) or \
                 (dia_semana == 4 and time(7, 0) <= hora_atual <= time(17, 0))
+    
     janela_conferencia = (time(5, 0) < hora_atual < time(7, 0)) or (time(17, 0) < hora_atual < time(19, 0))
     return is_aberto, janela_conferencia
 
@@ -171,7 +176,7 @@ try:
                 ad_u, ad_s = st.text_input("Usuário ADM:"), st.text_input("Senha ADM:", type="password")
                 if st.form_submit_button("ACESSAR PAINEL"):
                     if ad_u == "Administrador" and ad_s == "Administrador@123":
-                        st.session_state.is_admin = True; st.cache_data.clear(); st.rerun()
+                        st.session_state.is_admin = True; st.rerun()
                     else: st.error("ADM inválido.")
 
     elif st.session_state.is_admin:
@@ -190,21 +195,21 @@ try:
         st.divider(); st.subheader("👥 Gestão de Usuários")
         busca = st.text_input("🔍 Pesquisar por Nome ou E-mail:").strip().lower()
         
-        # OPERAÇÃO DE ATIVAÇÃO COM LOGOUT AUTOMÁTICO SOLICITADA
-        if st.button("✅ ATIVAR TODOS E DESLOGAR", use_container_width=True):
-            with st.spinner("Sincronizando Banco de Dados..."):
-                num = len(records_u)
-                if num > 0:
-                    status_list = [["ATIVO"]] * num
-                    sheet_u_escrita.update(f'H2:H{num+1}', status_list)
-                    st.info("Status atualizados. Deslogando em 3 segundos...")
-                    time_module.sleep(3) # Aguarda os 3 segundos solicitados
-                    
-                    # LOGOUT TOTAL PARA FORÇAR CARGA IDENTICA AO ACESSO INICIAL
-                    for key in list(st.session_state.keys()):
-                        del st.session_state[key]
-                    st.cache_data.clear()
-                    st.rerun()
+        c_adm1, c_adm2 = st.columns(2)
+        with c_adm1:
+            if st.button("✅ ATIVAR TODOS E DESLOGAR", use_container_width=True):
+                with st.spinner("Sincronizando Banco de Dados..."):
+                    num = len(records_u)
+                    if num > 0:
+                        status_list = [["ATIVO"]] * num
+                        sheet_u_escrita.update(f'H2:H{num+1}', status_list)
+                        st.info("Status atualizados. Deslogando em 3 segundos...")
+                        time_module.sleep(3)
+                        for key in list(st.session_state.keys()): del st.session_state[key]
+                        st.cache_data.clear(); st.rerun()
+        with c_adm2:
+            if st.button("🔄 SINCRONIZAR STATUS", use_container_width=True):
+                st.cache_data.clear(); st.rerun()
 
         for i, user in enumerate(records_u):
             nome_u, email_u = str(user.get('Nome','')).lower(), str(user.get('Email','')).lower()
