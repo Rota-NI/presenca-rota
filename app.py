@@ -6,6 +6,7 @@ from datetime import datetime, time, timedelta
 import pytz
 from fpdf import FPDF
 import urllib.parse
+import time as time_module
 
 # --- CONFIGURAÇÃO DE ACESSO ---
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -31,11 +32,12 @@ def buscar_limite_dinamico():
         try:
             sheet_c = doc.worksheet("Config")
         except:
-            # Cria automaticamente se não existir para evitar Erro: Config
+            # Cria a aba automaticamente para evitar Erro técnico
             sheet_c = doc.add_worksheet(title="Config", rows="10", cols="5")
             sheet_c.update('A1', 'LIMITE')
             sheet_c.update('A2', '100')
-        return int(sheet_c.acell('A2').value)
+        val = sheet_c.acell('A2').value
+        return int(val) if val else 100
     except: return 100
 
 @st.cache_data(ttl=15)
@@ -190,14 +192,17 @@ try:
         st.divider(); st.subheader("👥 Gestão de Usuários")
         busca = st.text_input("🔍 Pesquisar por Nome ou E-mail:").strip().lower()
         
-        # CORREÇÃO ERRO 429: Comando único de atualização em massa
+        # CORREÇÃO ERRO 429 E LISTA SUMINDO
         if st.button("✅ ATIVAR TODOS OS USUÁRIOS"):
-            with st.spinner("Aprovando todos..."):
+            with st.spinner("Sincronizando Banco de Dados..."):
                 num = len(records_u)
                 if num > 0:
                     status_list = [["ATIVO"]] * num
                     sheet_u_escrita.update(f'H2:H{num+1}', status_list)
-                    st.cache_data.clear(); st.success("Todos ativados!"); st.rerun()
+                    time_module.sleep(1) # Aguarda o Google consolidar
+                    st.cache_data.clear()
+                    st.success("Sincronização concluída!")
+                    st.rerun()
 
         for i, user in enumerate(records_u):
             nome_u, email_u = str(user.get('Nome','')).lower(), str(user.get('Email','')).lower()
@@ -241,7 +246,7 @@ try:
         elif aberto:
             if st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True):
                 agora = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
-                sheet_p_escrita.append_row([agora, u.get('QG_RMCF_OUTROS') or "QG", u.get('Graduação'), u.get('Nome'), u.get('Lotação'), u.get('Email')])
+                sheet_p_escrita.append_row([agora, u.get('ORIGEM') or "QG", u.get('Graduação'), u.get('Nome'), u.get('Lotação'), u.get('Email')])
                 st.cache_data.clear(); st.rerun()
         else: st.info("⌛ Lista fechada para novas inscrições.")
 
