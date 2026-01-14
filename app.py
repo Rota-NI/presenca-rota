@@ -118,8 +118,8 @@ try:
         qtd_pessoas = len(df_sorted)
         st.subheader(f"Pessoas Presentes ({qtd_pessoas})")
         
-        # Oculta a coluna de índice padrão (0, 1, 2...)
-        st.dataframe(df_sorted, hide_index=True)
+        # ALTERAÇÃO: st.table força a exibição de todas as linhas sem barra de rolagem
+        st.table(df_sorted)
 
         pdf = FPDF()
         pdf.add_page()
