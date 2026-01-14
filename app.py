@@ -52,10 +52,8 @@ def aplicar_ordenacao_e_numeracao(df):
     df['p_grad'] = df[col_grad].map(peso_grad).fillna(999)
     df['dt_temp'] = pd.to_datetime(df[col_data], dayfirst=True)
 
-    # Ordenação conforme prioridades estabelecidas
     df = df.sort_values(by=['is_fc', 'p_dest', 'p_grad', 'dt_temp']).reset_index(drop=True)
     
-    # Criar coluna de numeração personalizada (1 a 38, depois Exc-01...)
     def formatar_posicao(i):
         pos = i + 1
         if pos <= 38:
@@ -65,7 +63,6 @@ def aplicar_ordenacao_e_numeracao(df):
             return f"Exc-{exc_num:02d}"
 
     df.insert(0, 'Nº', [formatar_posicao(i) for i in range(len(df))])
-    
     return df.drop(columns=['is_fc', 'p_dest', 'p_grad', 'dt_temp'])
 
 # --- INTERFACE ---
@@ -118,19 +115,17 @@ try:
         df_bruto = pd.DataFrame(dados[1:], columns=dados[0])
         df_sorted = aplicar_ordenacao_e_numeracao(df_bruto)
         
-        # --- QUANTIDADE DE PESSOAS NO TÍTULO ---
         qtd_pessoas = len(df_sorted)
         st.subheader(f"Pessoas Presentes ({qtd_pessoas})")
         
-        st.table(df_sorted)
+        # Oculta a coluna de índice padrão (0, 1, 2...)
+        st.dataframe(df_sorted, hide_index=True)
 
-        # PDF Gerado com a nova coluna Nº
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", "B", 14)
         pdf.cell(190, 10, "LISTA DE PRESENÇA - ROTA NOVA IGUAÇU", ln=True, align="C")
         pdf.set_font("Arial", "B", 8)
-        # Ajuste de larguras para incluir a nova coluna Nº
         w = [12, 30, 20, 25, 63, 40]
         headers = ["Nº", "DATA_HORA", "DESTINO", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
         for i, h in enumerate(headers): pdf.cell(w[i], 8, h, border=1, align="C")
