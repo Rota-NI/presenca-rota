@@ -127,7 +127,7 @@ try:
             else:
                 with st.form("form_novo_cadastro"):
                     n_n, n_e = st.text_input("Nome de Escala:"), st.text_input("E-mail (Login):")
-                    n_t = st.text_input("Telefone (Ex: 21999999999):")
+                    n_t = st.text_input("Telefone (Somente nº - Ex: 21999999999):")
                     n_g = st.selectbox("Graduação:", ["TCEL", "MAJ", "CAP", "1º TEN", "2º TEN", "SUBTEN", "1º SGT", "2º SGT", "3º SGT", "CB", "SD", "FC COM", "FC TER"])
                     n_l, n_o, n_p = st.text_input("Lotação:"), st.selectbox("Origem:", ["QG", "RMCF", "OUTROS"]), st.text_input("Senha:", type="password")
                     if st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True):
