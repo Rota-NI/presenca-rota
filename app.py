@@ -176,8 +176,9 @@ try:
 
     elif st.session_state.is_admin:
         st.header("🛡️ PAINEL ADMINISTRATIVO")
-        # Botão Sair limpa o estado de admin
-        if st.button("⬅️ SAIR DO PAINEL"): st.session_state.is_admin = False; st.rerun()
+        if st.button("⬅️ SAIR DO PAINEL"): 
+            st.session_state.is_admin = False
+            st.rerun()
         
         st.subheader("⚙️ Configurações Globais")
         novo_limite = st.number_input("Limite máximo de usuários:", value=limite_max)
@@ -189,27 +190,21 @@ try:
         st.divider(); st.subheader("👥 Gestão de Usuários")
         busca = st.text_input("🔍 Pesquisar por Nome ou E-mail:").strip().lower()
         
-        c_adm1, c_adm2 = st.columns(2)
-        with c_adm1:
-            if st.button("✅ ATIVAR TODOS", use_container_width=True):
-                with st.spinner("Sincronizando Banco de Dados..."):
-                    num = len(records_u)
-                    if num > 0:
-                        status_list = [["ATIVO"]] * num
-                        sheet_u_escrita.update(f'H2:H{num+1}', status_list)
-                        time_module.sleep(2)
-                        # RESET TOTAL DE INTERFACE PARA FORÇAR RELOAD
-                        st.cache_data.clear()
-                        for key in list(st.session_state.keys()):
-                            if key.startswith("adm_chk_"): del st.session_state[key]
-                        st.rerun()
-        with c_adm2:
-            # ESTRATÉGIA SOLICITADA: Reload idêntico ao login
-            if st.button("🔄 SINCRONIZAR STATUS", use_container_width=True):
-                st.cache_data.clear()
-                for key in list(st.session_state.keys()):
-                    if key.startswith("adm_chk_"): del st.session_state[key]
-                st.rerun()
+        # OPERAÇÃO DE ATIVAÇÃO COM LOGOUT AUTOMÁTICO SOLICITADA
+        if st.button("✅ ATIVAR TODOS E DESLOGAR", use_container_width=True):
+            with st.spinner("Sincronizando Banco de Dados..."):
+                num = len(records_u)
+                if num > 0:
+                    status_list = [["ATIVO"]] * num
+                    sheet_u_escrita.update(f'H2:H{num+1}', status_list)
+                    st.info("Status atualizados. Deslogando em 3 segundos...")
+                    time_module.sleep(3) # Aguarda os 3 segundos solicitados
+                    
+                    # LOGOUT TOTAL PARA FORÇAR CARGA IDENTICA AO ACESSO INICIAL
+                    for key in list(st.session_state.keys()):
+                        del st.session_state[key]
+                    st.cache_data.clear()
+                    st.rerun()
 
         for i, user in enumerate(records_u):
             nome_u, email_u = str(user.get('Nome','')).lower(), str(user.get('Email','')).lower()
@@ -219,7 +214,6 @@ try:
                 with st.expander(f"{user.get('Graduação')} {user.get('Nome')} - {status_atual}"):
                     c1, c2, c3 = st.columns([2, 1, 1])
                     c1.write(f"📧 {user.get('Email')} | 📱 {user.get('TELEFONE')}")
-                    # Chave única para persistir o estado após o rerun
                     escolha = c2.checkbox("Liberar", value=is_ativo, key=f"adm_chk_{i}")
                     if escolha != is_ativo:
                         sheet_u_escrita.update_cell(i+2, 8, "ATIVO" if escolha else "INATIVO")
@@ -228,10 +222,11 @@ try:
                         sheet_u_escrita.delete_rows(i+2); st.cache_data.clear(); st.rerun()
 
     else:
-        # BARRA LATERAL PRESERVADA
         u = st.session_state.usuario_logado
         st.sidebar.markdown(f"### 👤 {u.get('Graduação')} {u.get('Nome')}")
-        if st.sidebar.button("Sair", use_container_width=True): st.session_state.usuario_logado = None; st.rerun()
+        if st.sidebar.button("Sair", use_container_width=True): 
+            for key in list(st.session_state.keys()): del st.session_state[key]
+            st.rerun()
         st.sidebar.markdown("---")
         st.sidebar.caption("Desenvolvido por: MAJ ANDRÉ AGUIAR")
 
