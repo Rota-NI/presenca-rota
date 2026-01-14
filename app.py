@@ -7,7 +7,7 @@ import pytz
 from fpdf import FPDF
 import urllib.parse
 
-# --- CONFIGURAÇÃO DE ACESSO COM CACHE DE ALTA PERFORMANCE ---
+# --- CONFIGURAÇÃO DE ACESSO COM CACHE PARA EVITAR ERRO 429 ---
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
 @st.cache_resource
@@ -16,7 +16,7 @@ def conectar_gsheets():
     creds = Credentials.from_service_account_info(info, scopes=scope)
     return gspread.authorize(creds)
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=20)
 def buscar_usuarios():
     try:
         client = conectar_gsheets()
@@ -24,7 +24,7 @@ def buscar_usuarios():
         return sheet_u.get_all_records()
     except: return []
 
-@st.cache_data(ttl=15)
+@st.cache_data(ttl=10)
 def buscar_presenca():
     try:
         client = conectar_gsheets()
@@ -60,13 +60,11 @@ def verificar_status_e_limpar(sheet_p, dados_p):
                 st.rerun()
         except: pass
 
-    aberto = (dia_semana == 6 and hora_atual >= time(19, 0)) or \
-             (dia_semana in [0, 1, 2, 3] and (hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(17, 0) or hora_atual >= time(19, 0))) or \
-             (dia_semana == 4 and time(7, 0) <= hora_atual <= time(17, 0))
-    return aberto
+    return (dia_semana == 6 and hora_atual >= time(19, 0)) or \
+           (dia_semana in [0, 1, 2, 3] and (hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(17, 0) or hora_atual >= time(19, 0))) or \
+           (dia_semana == 4 and time(7, 0) <= hora_atual <= time(17, 0))
 
 def aplicar_ordenacao_e_numeracao(df):
-    # Garante que as colunas existam para evitar erro de Key
     cols_necessarias = ['DATA_HORA', 'ORIGEM', 'GRADUAÇÃO', 'NOME', 'LOTAÇÃO', 'EMAIL']
     for col in cols_necessarias:
         if col not in df.columns: df[col] = "N/A"
@@ -145,18 +143,25 @@ try:
                 else: st.error("E-mail não encontrado.")
     else:
         user = st.session_state.usuario_logado
-        st.sidebar.info(f"Conectado: {user.get('Graduação')} {user.get('Nome')}")
+        # SEÇÃO DE LOGIN: Exibe apenas os dados de quem está conectado agora
+        st.sidebar.markdown("### 👤 Usuário Conectado")
+        st.sidebar.info(f"**{user.get('Graduação')} {user.get('Nome')}**")
         st.sidebar.write(f"ID: {user.get('Email')}")
+        
+        if st.sidebar.button("Sair", use_container_width=True): 
+            st.session_state.usuario_logado = None
+            st.rerun()
+        
+        # SEÇÃO DE CRÉDITOS: Movida para o final da sidebar para não confundir com o login
         st.sidebar.markdown("---")
-        st.sidebar.write("**MAJ ANDRÉ AGUIAR - CAES**") 
-        if st.sidebar.button("Sair"): st.session_state.usuario_logado = None; st.rerun()
+        st.sidebar.caption("Desenvolvido por:")
+        st.sidebar.write("MAJ ANDRÉ AGUIAR - CAES")
         
         aberto = verificar_status_e_limpar(sheet_p_escrita, dados_p)
         df_original, df_visual = pd.DataFrame(), pd.DataFrame()
         ja, posicao_usuario = False, 999
         
         if dados_p and len(dados_p) > 1:
-            # Força cabeçalho correto para evitar erro de 'GRADUAÇÃO'
             df_base = pd.DataFrame(dados_p[1:], columns=dados_p[0])
             df_original, df_visual = aplicar_ordenacao_e_numeracao(df_base)
             
@@ -181,7 +186,7 @@ try:
                 st.session_state.conferência_ativa = not st.session_state.conferência_ativa
             if st.session_state.conferência_ativa:
                 for i, row in df_original.iterrows():
-                    # CHAVE ABSOLUTA: Índice + E-mail para evitar erro de duplicidade
+                    # CHAVE ÚNICA ABSOLUTA: Índice + E-mail para evitar conflitos
                     key_p = f"pres_{i}_{row.get('EMAIL')}"
                     if key_p not in st.session_state: st.session_state[key_p] = False
                     st.checkbox(f"{row['Nº']} - {row.get('GRADUAÇÃO')} {row.get('NOME')}", key=key_p)
