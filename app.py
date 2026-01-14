@@ -83,6 +83,10 @@ def aplicar_ordenacao(df):
 
 # --- INTERFACE ---
 st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered")
+
+# Script para integração visual com Telegram Mini App
+st.markdown('<script src="https://telegram.org/js/telegram-web-app.js"></script>', unsafe_allow_html=True)
+
 st.markdown("""<style>
     .titulo-container { text-align: center; width: 100%; }
     .titulo-responsivo { font-size: clamp(1.2rem, 5vw, 2.2rem); font-weight: bold; margin-bottom: 20px; }
@@ -122,31 +126,18 @@ try:
                     if any(str(u.get('Email','')).strip().lower() == n_email.strip().lower() for u in records_u): st.error("E-mail já cadastrado.")
                     else:
                         doc_escrita.worksheet("Usuarios").append_row([n_nome, n_grad, n_lot, n_pass, n_orig, n_email])
-                        st.cache_data.clear(); st.success("Cadastro realizado!")
+                        st.cache_data.clear(); st.success("Cadastro realizado! Use a aba Login.")
         
         with t3:
-            st.markdown("### 📖 Guia de Uso Rápido")
-            # Adicionado Instruções de Instalação
-            st.success("📲 **COMO INSTALAR NO CELULAR (sem navegador)**")
-            c_inst1, c_inst2 = st.columns(2)
-            with c_inst1:
-                st.markdown("**Android (Chrome):**")
-                st.caption("1. Toque nos três pontinhos (⋮) localizados no canto superior.")
-                st.caption("2. Selecione 'Instalar Aplicativo' ou 'Adicionar à tela inicial'.")
-            with c_inst2:
-                st.markdown("**iPhone (Safari):**")
-                st.caption("1. Toque no botão de Compartilhar (quadrado com seta ⬆️).")
-                st.caption("2. Role para baixo e selecione 'Adicionar à Tela de Início'.")
-            
+            st.markdown("### 📖 Guia de Uso")
+            st.success("📲 **ACESSO PELO TELEGRAM**")
+            st.info("No chat do bot `@RotaNovaIguacuBot`, toque no botão 'Abrir App Rota' no menu inferior para acesso instantâneo.")
             st.divider()
-            st.info("**CADASTRO E LOGIN:** Use seu e-mail como identificador único.")
             st.markdown("""
-            **1. Regras de Horário:**
-            * **Manhã:** Inscrições abertas até às 05:00h.
-            * **Tarde:** Inscrições abertas até às 17:00h.
-            * **Finais de Semana:** Abrem domingo às 19:00h.
-            
-            **2. Ordenação da Lista:** Organizada por Antiguidade, primeira mente para os PPMM do QG; depois para o RMCF e, após para OUTROS, bem como para os FC COM e FC TER será, respectivamente, o horário para a Ordem de Inscrição.
+            **Regras de Horário:**
+            * **Manhã:** Inscrições até às 05:00h.
+            * **Tarde:** Inscrições até às 17:00h.
+            * **Domingos:** Abertura às 19:00h.
             """)
             
         with t4:
@@ -156,7 +147,6 @@ try:
                 if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')}")
                 else: st.error("E-mail não encontrado.")
     else:
-        # --- ÁREA LOGADA ---
         u = st.session_state.usuario_logado
         st.sidebar.markdown("### 👤 Usuário Conectado")
         st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
@@ -193,14 +183,14 @@ try:
                             st.cache_data.clear(); st.rerun()
         else: st.info("⌛ Lista fechada para novas inscrições.")
 
+        # Conferência exclusiva (3 primeiros e horários de embarque)
         if ja and pos <= 3 and janela_conf:
             st.divider(); st.subheader("📋 CONFERÊNCIA DE EMBARQUE")
-            if st.button("📝 ABRIR / FECHAR PAINEL", use_container_width=True):
+            if st.button("📝 PAINEL DE CONFERÊNCIA", use_container_width=True):
                 st.session_state.conf_ativa = not st.session_state.conf_ativa
             if st.session_state.conf_ativa:
                 for i, row in df_o.iterrows():
                     st.checkbox(f"{row['Nº']} - {row.get('GRADUAÇÃO')} {row.get('NOME')}", key=f"chk_{i}_{row.get('EMAIL')}")
-            st.divider()
 
         if dados_p and len(dados_p) > 1:
             st.subheader(f"Presentes ({len(df_o)})")
