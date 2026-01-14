@@ -6,6 +6,7 @@ from datetime import datetime, time, timedelta
 import pytz
 from fpdf import FPDF
 import urllib.parse
+import time as time_module
 
 # --- CONFIGURAÇÃO DE ACESSO ---
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -41,8 +42,8 @@ def verificar_status_e_limpar(sheet_p, dados_p):
     hora_atual, dia_semana = agora.time(), agora.weekday()
 
     if hora_atual >= time(18, 50): marco = agora.replace(hour=18, minute=50, second=0, microsecond=0)
-    elif hora_atual >= time(13, 50): marco = agora.replace(hour=13, minute=50, second=0, microsecond=0)
-    else: marco = (agora - timedelta(days=1)).replace(hour=13, minute=50, second=0, microsecond=0)
+    elif hora_atual >= time(6, 50): marco = agora.replace(hour=6, minute=50, second=0, microsecond=0)
+    else: marco = (agora - timedelta(days=1)).replace(hour=18, minute=50, second=0, microsecond=0)
 
     if dados_p and len(dados_p) > 1:
         try:
@@ -50,7 +51,8 @@ def verificar_status_e_limpar(sheet_p, dados_p):
             ultima_dt = fuso_br.localize(datetime.strptime(ultima_str, '%d/%m/%Y %H:%M:%S'))
             if ultima_dt < marco:
                 sheet_p.resize(rows=1); sheet_p.resize(rows=100)
-                st.cache_data.clear(); st.rerun()
+                st.cache_data.clear()
+                st.rerun()
         except: pass
     
     is_aberto = (dia_semana == 6 and hora_atual >= time(19, 0)) or \
@@ -87,7 +89,7 @@ st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered")
 # Script de Integração Telegram
 st.markdown('<script src="https://telegram.org/js/telegram-web-app.js"></script>', unsafe_allow_html=True)
 
-# Estilos CSS (Largura Compacta da Tabela)
+# Estilos CSS
 st.markdown("""<style>
     .titulo-container { text-align: center; width: 100%; }
     .titulo-responsivo { font-size: clamp(1.2rem, 5vw, 2.2rem); font-weight: bold; margin-bottom: 20px; }
@@ -102,6 +104,7 @@ st.markdown('<div class="titulo-container"><div class="titulo-responsivo">🚌 R
 
 if 'usuario_logado' not in st.session_state: st.session_state.usuario_logado = None
 if 'conf_ativa' not in st.session_state: st.session_state.conf_ativa = False
+if 'atualizado_inicial' not in st.session_state: st.session_state.atualizado_inicial = False
 
 try:
     records_u = buscar_usuarios_cadastrados()
@@ -117,11 +120,11 @@ try:
                 if st.form_submit_button("ENTRAR", use_container_width=True):
                     u_a = next((u for u in records_u if str(u.get('Email','')).strip().lower() == l_e.strip().lower() and str(u.get('Senha','')) == str(l_s)), None)
                     if u_a: 
-                        # ALTERAÇÃO SOLICITADA: Limpa o cache ao logar para garantir dados zerados/atuais
                         st.cache_data.clear()
                         st.session_state.usuario_logado = u_a
                         st.rerun()
                     else: st.error("E-mail ou senha incorretos.")
+        # ... abas t2, t3, t4 permanecem iguais conforme solicitado ...
         with t2:
             with st.form("form_novo_cadastro"):
                 n_n, n_e = st.text_input("Nome de Escala:"), st.text_input("E-mail (Login):")
@@ -153,16 +156,27 @@ try:
             * Após o horário de 06:50h e de 18:50h, a lista será automaticamente zerada para que o novo ciclo da lista possa ocorrer. Sendo assim, caso queira manter um histórico de viagem, antes desses horários, faça o download do pdf e/ou do resumo do W.Zap.
             """)
         with t4:
-            e_r = st.text_input("E-mail cadastrado:")
+            e_recup = st.text_input("E-mail cadastrado:")
             if st.button("RECUPERAR DADOS", use_container_width=True):
-                u_r = next((u for u in records_u if str(u.get('Email', '')).strip().lower() == e_r.strip().lower()), None)
+                u_r = next((u for u in records_u if str(u.get('Email', '')).strip().lower() == e_recup.strip().lower()), None)
                 if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')}")
                 else: st.error("E-mail não encontrado.")
+
     else:
+        # DETERMINAÇÃO: ATUALIZAÇÃO AUTOMÁTICA PÓS-LOGIN (2 SEGUNDOS)
+        if not st.session_state.atualizado_inicial:
+            time_module.sleep(2)
+            st.cache_data.clear()
+            st.session_state.atualizado_inicial = True
+            st.rerun()
+
         u = st.session_state.usuario_logado
         st.sidebar.markdown("### 👤 Usuário Conectado")
         st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
-        if st.sidebar.button("Sair", use_container_width=True): st.session_state.usuario_logado = None; st.rerun()
+        if st.sidebar.button("Sair", use_container_width=True): 
+            st.session_state.usuario_logado = None
+            st.session_state.atualizado_inicial = False
+            st.rerun()
         st.sidebar.markdown("---")
         st.sidebar.caption("Desenvolvido por:")
         st.sidebar.write("MAJ ANDRÉ AGUIAR - CAES")
