@@ -115,7 +115,6 @@ try:
                 l_t = st.text_input("Telefone (Apenas números):")
                 l_s = st.text_input("Senha:", type="password")
                 if st.form_submit_button("ENTRAR", use_container_width=True):
-                    # Ajustado para ler a coluna TELEFONE exatamente como na planilha
                     u_a = next((u for u in records_u if str(u.get('Email','')).strip().lower() == l_e.strip().lower() 
                                 and str(u.get('Senha','')) == str(l_s)
                                 and str(u.get('TELEFONE','')).strip() == l_t.strip()), None)
@@ -127,13 +126,12 @@ try:
             else:
                 with st.form("form_novo_cadastro"):
                     n_n, n_e = st.text_input("Nome de Escala:"), st.text_input("E-mail (Login):")
-                    n_t = st.text_input("Telefone (Somente nº - Ex: 21999999999):")
+                    n_t = st.text_input("Telefone (Ex: 21999999999):")
                     n_g = st.selectbox("Graduação:", ["TCEL", "MAJ", "CAP", "1º TEN", "2º TEN", "SUBTEN", "1º SGT", "2º SGT", "3º SGT", "CB", "SD", "FC COM", "FC TER"])
                     n_l, n_o, n_p = st.text_input("Lotação:"), st.selectbox("Origem:", ["QG", "RMCF", "OUTROS"]), st.text_input("Senha:", type="password")
                     if st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True):
                         if any(str(u.get('Email','')).strip().lower() == n_e.strip().lower() for u in records_u): st.error("E-mail já cadastrado.")
                         else:
-                            # Salva na coluna TELEFONE (G) conforme sua imagem
                             doc_escrita.worksheet("Usuarios").append_row([n_n, n_g, n_l, n_p, n_o, n_e, n_t])
                             st.cache_data.clear(); st.success("Cadastro realizado!")
         with t3:
@@ -160,7 +158,6 @@ try:
             e_r = st.text_input("E-mail cadastrado:")
             if st.button("RECUPERAR DADOS", use_container_width=True):
                 u_r = next((u for u in records_u if str(u.get('Email', '')).strip().lower() == e_r.strip().lower()), None)
-                # Ajustado para buscar TELEFONE exatamente como no cabeçalho da planilha
                 if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')} | Tel: {u_r.get('TELEFONE')}")
                 else: st.error("E-mail não encontrado.")
     else:
@@ -183,21 +180,22 @@ try:
                 try: pos = df_o.index[df_o['EMAIL'].str.lower() == email_logado].tolist()[0] + 1
                 except: pass
 
-        if aberto:
-            if not ja:
-                orig = u.get('ORIGEM') or u.get('QG_RMCF_OUTROS') or "QG"
-                if st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True):
-                    agora = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
-                    sheet_p_escrita.append_row([agora, orig, u.get('Graduação'), u.get('Nome'), u.get('Lotação'), u.get('Email')])
-                    st.cache_data.clear(); st.rerun()
-            else:
-                st.success(f"✅ Presença registrada: {pos}º")
-                if st.button("❌ EXCLUIR MINHA ASSINATURA", use_container_width=True):
-                    for idx, r in enumerate(dados_p):
-                        if len(r) >= 6 and str(r[5]).strip().lower() == email_logado:
-                            sheet_p_escrita.delete_rows(idx + 1)
-                            st.cache_data.clear(); st.rerun()
-        else: st.info("⌛ Lista fechada para novas inscrições.")
+        # ATUALIZAÇÃO SOLICITADA: Botão de excluir ativo em tempo integral para quem já está na lista
+        if ja:
+            st.success(f"✅ Presença registrada: {pos}º")
+            if st.button("❌ EXCLUIR MINHA ASSINATURA", use_container_width=True):
+                for idx, r in enumerate(dados_p):
+                    if len(r) >= 6 and str(r[5]).strip().lower() == email_logado:
+                        sheet_p_escrita.delete_rows(idx + 1)
+                        st.cache_data.clear(); st.rerun()
+        elif aberto:
+            orig = u.get('ORIGEM') or u.get('QG_RMCF_OUTROS') or "QG"
+            if st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True):
+                agora = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
+                sheet_p_escrita.append_row([agora, orig, u.get('Graduação'), u.get('Nome'), u.get('Lotação'), u.get('Email')])
+                st.cache_data.clear(); st.rerun()
+        else:
+            st.info("⌛ Lista fechada para novas inscrições.")
 
         if ja and pos <= 3 and janela_conf:
             st.divider(); st.subheader("📋 CONFERÊNCIA")
@@ -208,18 +206,14 @@ try:
         if dados_p and len(dados_p) > 1:
             inscritos = len(df_o)
             vagas_restantes = 38 - inscritos
-            
             st.subheader(f"Voluntários Inscritos: {inscritos}")
             st.subheader(f"Vagas Previstas: 38")
-            
-            # Exibe o saldo de vagas (Positivo para vagas livres, Negativo para excedentes)
-            if vagas_restantes >= 0:
-                st.subheader(f"Vagas Restantes: {vagas_restantes}")
-            else:
-                st.subheader(f"Excedentes: {abs(vagas_restantes)}")
+            if vagas_restantes >= 0: st.subheader(f"Vagas Restantes: {vagas_restantes}")
+            else: st.subheader(f"Excedentes: {abs(vagas_restantes)}")
 
             if st.button("🔄 ATUALIZAR", use_container_width=True): st.cache_data.clear(); st.rerun()
-            st.write(f'<div class="tabela-responsiva">{df_v.drop(columns=["EMAIL"]).to_html(index=False, justify="center", border=0, escape=False)}</div>', unsafe_allow_html=True)            
+            st.write(f'<div class="tabela-responsiva">{df_v.drop(columns=["EMAIL"]).to_html(index=False, justify="center", border=0, escape=False)}</div>', unsafe_allow_html=True)
+            
             c1, c2 = st.columns(2)
             with c1:
                 pdf = FPDF()
