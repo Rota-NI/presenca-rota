@@ -54,7 +54,27 @@ def aplicar_ordenacao_e_numeracao(df):
     return df.drop(columns=['is_fc', 'p_orig', 'p_grad', 'dt_temp'])
 
 # --- INTERFACE ---
-st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered") # Garante centralização mobile
+st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered")
+
+# CSS para tornar a tabela responsiva e redimensionável pelo usuário
+st.markdown("""
+    <style>
+    .tabela-responsiva {
+        width: 100%;
+        overflow-x: auto;
+        display: block;
+    }
+    table {
+        width: 100% !important;
+        font-size: 12px;
+    }
+    th, td {
+        white-space: nowrap;
+        padding: 5px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 st.markdown("<h1 style='text-align: center;'>🚌 ROTA NOVA IGUAÇU</h1>", unsafe_allow_html=True)
 
 if 'usuario_logado' not in st.session_state:
@@ -69,7 +89,7 @@ try:
         with t1:
             l_n = st.text_input("Usuário (Nome de Escala):")
             l_s = st.text_input("Senha:", type="password")
-            if st.button("Entrar"):
+            if st.button("Entrar", use_container_width=True):
                 users = sheet_u.get_all_records()
                 u_a = next((u for u in users if str(u['Nome']).strip() == l_n.strip() and str(u['Senha']).strip() == str(l_s).strip()), None)
                 if u_a: 
@@ -84,12 +104,12 @@ try:
                 n_u = st.text_input("Lotação:")
                 n_d = st.selectbox("Origem Padrão:", ["QG", "RMCF", "OUTROS"])
                 n_s = st.text_input("Crie uma Senha:", type="password")
-                if st.form_submit_button("Finalizar Cadastro"):
+                if st.form_submit_button("Finalizar Cadastro", use_container_width=True):
                     sheet_u.append_row([n_n, n_g, n_u, n_s, n_d, n_e])
                     st.success("Cadastro realizado!")
         with t3:
             e_r = st.text_input("Digite o e-mail cadastrado:")
-            if st.button("Visualizar Meus Dados"):
+            if st.button("Visualizar Dados", use_container_width=True):
                 users = sheet_u.get_all_records()
                 u_r = next((u for u in users if str(u.get('Email', '')).strip().lower() == e_r.strip().lower()), None)
                 if u_r: st.info(f"Usuário: {u_r['Nome']} | Senha: {u_r['Senha']}")
@@ -121,8 +141,9 @@ try:
             df = aplicar_ordenacao_e_numeracao(pd.DataFrame(dados_p[1:], columns=dados_p[0]))
             st.subheader(f"Pessoas Presentes ({len(df)})")
             
-            # Tabela Responsiva
-            st.write(df.to_html(index=False, justify='center', border=0), unsafe_allow_html=True)
+            # Tabela dentro de uma DIV para permitir rolagem e redimensionamento no mobile
+            html_tabela = f'<div class="tabela-responsiva">{df.to_html(index=False, justify="center", border=0)}</div>'
+            st.write(html_tabela, unsafe_allow_html=True)
             
             col_pdf, col_wpp = st.columns(2)
             with col_pdf:
