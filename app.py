@@ -7,7 +7,7 @@ import pytz
 from fpdf import FPDF
 import urllib.parse
 
-# --- CONFIGURAÇÃO DE ACESSO COM CACHE OTIMIZADO ---
+# --- CONFIGURAÇÃO DE ACESSO COM CACHE DE ALTA PERFORMANCE ---
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
 @st.cache_resource
@@ -16,20 +16,26 @@ def conectar_gsheets():
     creds = Credentials.from_service_account_info(info, scopes=scope)
     return gspread.authorize(creds)
 
-@st.cache_data(ttl=20)
-def buscar_dados_planilha():
+@st.cache_data(ttl=60) # Cache maior para dados de usuários (raramente mudam)
+def buscar_usuarios():
     try:
         client = conectar_gsheets()
-        doc = client.open("ListaPresenca")
-        sheet_p = doc.sheet1
-        sheet_u = doc.worksheet("Usuarios")
-        return sheet_p.get_all_values(), sheet_u.get_all_records()
+        sheet_u = client.open("ListaPresenca").worksheet("Usuarios")
+        return sheet_u.get_all_records()
     except:
-        return None, None
+        return []
+
+@st.cache_data(ttl=15) # Cache para a lista de presença
+def buscar_presenca():
+    try:
+        client = conectar_gsheets()
+        sheet_p = client.open("ListaPresenca").sheet1
+        return sheet_p.get_all_values()
+    except:
+        return None
 
 def conectar_escrita():
-    client = conectar_gsheets()
-    return client.open("ListaPresenca")
+    return conectar_gsheets().open("ListaPresenca")
 
 def verificar_status_e_limpar(sheet_p, dados_p):
     fuso_br = pytz.timezone('America/Sao_Paulo')
@@ -38,34 +44,29 @@ def verificar_status_e_limpar(sheet_p, dados_p):
     dia_semana = agora.weekday()
 
     if hora_atual >= time(18, 50):
-        marco_ciclo_atual = agora.replace(hour=18, minute=50, second=0, microsecond=0)
+        marco = agora.replace(hour=18, minute=50, second=0, microsecond=0)
     elif hora_atual >= time(6, 50):
-        marco_ciclo_atual = agora.replace(hour=6, minute=50, second=0, microsecond=0)
+        marco = agora.replace(hour=6, minute=50, second=0, microsecond=0)
     else:
-        ontem = agora - timedelta(days=1)
-        marco_ciclo_atual = ontem.replace(hour=18, minute=50, second=0, microsecond=0)
+        marco = (agora - timedelta(days=1)).replace(hour=18, minute=50, second=0, microsecond=0)
 
     if dados_p and len(dados_p) > 1:
         try:
-            ultima_assinatura_str = dados_p[-1][0]
-            ultima_assinatura_dt = datetime.strptime(ultima_assinatura_str, '%d/%m/%Y %H:%M:%S')
-            ultima_assinatura_dt = fuso_br.localize(ultima_assinatura_dt)
-            if ultima_assinatura_dt < marco_ciclo_atual:
+            ultima = fuso_br.localize(datetime.strptime(dados_p[-1][0], '%d/%m/%Y %H:%M:%S'))
+            if ultima < marco:
                 sheet_p.resize(rows=1)
                 sheet_p.resize(rows=100)
-                for key in list(st.session_state.keys()):
-                    if key.startswith("presenca_"): del st.session_state[key]
+                for k in list(st.session_state.keys()):
+                    if k.startswith("presenca_"): del st.session_state[k]
                 st.cache_data.clear()
                 st.rerun()
         except: pass
 
     aberto = False
-    if dia_semana == 6:
-        if hora_atual >= time(19, 0): aberto = True
+    if dia_semana == 6 and hora_atual >= time(19, 0): aberto = True
     elif dia_semana in [0, 1, 2, 3]:
         if hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(17, 0) or hora_atual >= time(19, 0): aberto = True
-    elif dia_semana == 4:
-        if time(7, 0) <= hora_atual <= time(17, 0): aberto = True
+    elif dia_semana == 4 and time(7, 0) <= hora_atual <= time(17, 0): aberto = True
     
     return aberto
 
@@ -80,7 +81,6 @@ def aplicar_ordenacao_e_numeracao(df):
     df['p_grad'] = df['GRADUAÇÃO'].map(peso_grad).fillna(999)
     df['dt_temp'] = pd.to_datetime(df['DATA_HORA'], dayfirst=True)
     df = df.sort_values(by=['is_fc', 'p_orig', 'p_grad', 'dt_temp']).reset_index(drop=True)
-    
     df.insert(0, 'Nº', [str(i+1) if i < 38 else f"Exc-{i-37:02d}" for i in range(len(df))])
     
     df_visual = df.copy()
@@ -114,11 +114,8 @@ if 'conferencia_ativa' not in st.session_state:
     st.session_state.conferencia_ativa = False
 
 try:
-    dados_p, records_u = buscar_dados_planilha()
-    if dados_p is None:
-        st.warning("⚠️ Sincronizando dados com o servidor... Aguarde.")
-        st.stop()
-
+    records_u = buscar_usuarios()
+    dados_p = buscar_presenca()
     doc_escrita = conectar_escrita()
     sheet_p_escrita = doc_escrita.sheet1
 
@@ -134,13 +131,28 @@ try:
                         st.session_state.usuario_logado = u_a
                         st.rerun()
                     else: st.error("Usuário ou senha inválidos.")
+        with t2:
+            with st.form("form_cad"):
+                n_n = st.text_input("Nome de Escala:")
+                n_e = st.text_input("E-mail para recuperação:")
+                n_g = st.selectbox("Graduação:", ["TCEL", "MAJ", "CAP", "1º TEN", "2º TEN", "SUBTEN", "1º SGT", "2º SGT", "3º SGT", "CB", "SD", "FC COM", "FC TER"])
+                n_u, n_d = st.text_input("Lotação:"), st.selectbox("Origem Padrão:", ["QG", "RMCF", "OUTROS"])
+                n_s = st.text_input("Crie uma Senha:", type="password")
+                if st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True):
+                    doc_escrita.worksheet("Usuarios").append_row([n_n, n_g, n_u, n_s, n_d, n_e])
+                    st.cache_data.clear()
+                    st.success("Cadastro realizado! Vá para a aba Login.")
+        with t3:
+            e_r = st.text_input("Digite o e-mail cadastrado:")
+            if st.button("RECUPERAR DADOS", use_container_width=True):
+                u_r = next((u for u in records_u if str(u.get('Email', '')).strip().lower() == e_r.strip().lower()), None)
+                if u_r: st.info(f"Usuário: {u_r['Nome']} | Senha: {u_r['Senha']}")
+                else: st.error("E-mail não encontrado.")
     else:
         user = st.session_state.usuario_logado
         st.sidebar.info(f"Conectado: {user['Graduação']} {user['Nome']}")
         st.sidebar.markdown("---")
-        st.sidebar.caption("Desenvolvido por:")
         st.sidebar.write("**MAJ ANDRÉ AGUIAR - CAES**") 
-        
         if st.sidebar.button("Sair"): 
             st.session_state.usuario_logado = None
             st.rerun()
@@ -149,7 +161,7 @@ try:
         df_original, df_visual = pd.DataFrame(), pd.DataFrame()
         ja, posicao_usuario = False, 999
         
-        if len(dados_p) > 1:
+        if dados_p and len(dados_p) > 1:
             df_original, df_visual = aplicar_ordenacao_e_numeracao(pd.DataFrame(dados_p[1:], columns=dados_p[0]))
             ja = any(user['Nome'] == r[3] for r in dados_p[1:])
             if ja:
@@ -175,16 +187,15 @@ try:
             
             if st.session_state.conferencia_ativa:
                 for i, row in df_original.iterrows():
-                    key_p = f"presenca_{i}_{row['NOME']}"
+                    key_p = f"presenca_{i}_{row['NOME']}" # CHAVE ÚNICA GARANTIDA
                     if key_p not in st.session_state: st.session_state[key_p] = False
                     st.checkbox(f"{row['Nº']} - {row['GRADUAÇÃO']} {row['NOME']}", key=key_p)
             st.divider()
 
-        if len(dados_p) > 1:
+        if dados_p and len(dados_p) > 1:
             st.subheader(f"Presentes ({len(df_original)})")
             if st.button("🔄 ATUALIZAR LISTA", use_container_width=True): 
-                st.cache_data.clear()
-                st.rerun()
+                st.cache_data.clear(); st.rerun()
             
             html_tab = f'<div class="tabela-responsiva">{df_visual.to_html(index=False, justify="center", border=0, escape=False)}</div>'
             st.write(html_tab, unsafe_allow_html=True)
@@ -196,12 +207,7 @@ try:
                 pdf.cell(190, 10, "LISTA DE PRESENÇA - ROTA NOVA IGUAÇU", ln=True, align="C")
                 pdf.set_font("Arial", "B", 8)
                 w = [12, 30, 20, 25, 63, 40]
-                headers = ["Nº", "DATA_HORA", "ORIGEM", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
-                for i, h in enumerate(headers): pdf.cell(w[i], 8, h, border=1, align="C")
-                pdf.ln(); pdf.set_font("Arial", "", 8)
-                for _, r in df_original.iterrows():
-                    for i in range(len(headers)): pdf.cell(w[i], 8, str(r[i]), border=1)
-                    pdf.ln()
+                for h in ["Nº", "DATA_HORA", "ORIGEM", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]: pdf.cell(12, 8, h, border=1)
                 st.download_button("📄 PDF", pdf.output(dest="S").encode("latin-1"), "lista.pdf", "application/pdf", use_container_width=True)
             
             with col_wpp:
@@ -218,4 +224,4 @@ try:
     st.markdown('<div class="footer">Desenvolvido por: <b>MAJ ANDRÉ AGUIAR - CAES</b></div>', unsafe_allow_html=True)
 
 except Exception as e:
-    st.error(f"Erro de conexão. Aguarde 10 segundos. Detalhe: {e}")
+    st.error(f"⚠️ Erro temporário de conexão. Tente atualizar em instantes. Detalhe: {e}")
