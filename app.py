@@ -102,9 +102,7 @@ try:
     sheet_p_escrita = doc_escrita.sheet1
 
     if st.session_state.usuario_logado is None:
-        # Adicionado campo Instruções ao menu inicial
-        t1, t2, t3, t4 = st.tabs(["Login", "Cadastro", "Instruções", "Esqueci a Senha"])
-        
+        t1, t2, t3 = st.tabs(["Login", "Cadastro", "Esqueci a Senha"])
         with t1:
             with st.form("form_login"):
                 l_e = st.text_input("E-mail:")
@@ -113,7 +111,6 @@ try:
                     u_a = next((u for u in records_u if str(u.get('Email','')).strip().lower() == l_e.strip().lower() and str(u.get('Senha','')) == str(l_s)), None)
                     if u_a: st.session_state.usuario_logado = u_a; st.rerun()
                     else: st.error("E-mail ou senha incorretos.")
-        
         with t2:
             with st.form("form_novo_cadastro"):
                 n_nome, n_email = st.text_input("Nome de Escala:"), st.text_input("E-mail (Login):")
@@ -124,36 +121,24 @@ try:
                     else:
                         doc_escrita.worksheet("Usuarios").append_row([n_nome, n_grad, n_lot, n_pass, n_orig, n_email])
                         st.cache_data.clear(); st.success("Cadastro realizado!")
-        
         with t3:
-            st.markdown("### 📖 Guia de Uso Rápido")
-            st.info("**1. Cadastro e Login:** Use seu e-mail funcional/pessoal como identificador único.")
-            st.markdown("""
-            **2. Regras de Horário:**
-            * **Manhã:** Inscrições abertas até às 05:00h.
-            * **Tarde:** Inscrições abertas até às 17:00h.
-            * **Finais de Semana:** Abrem domingo às 19:00h.
-            
-            **3. Ordenação da Lista:**
-            * A lista é organizada por **Antiguidade (Graduação)**.
-            * Em caso de mesma graduação, prevalece a **Ordem de Inscrição**.
-            * Passageiros a partir da 38ª posição são marcados como **Excedentes (EXC)**.
-            
-            **4. Conferência:**
-            * Nos horários de embarque (05h-07h e 17h-19h), os 3 primeiros da lista acessam o painel de conferência para controle dos passageiros.
-            """)
-            
-        with t4:
-            e_rec = st.text_input("Digite o e-mail cadastrado:")
+            e_recup = st.text_input("Digite o e-mail cadastrado:")
             if st.button("RECUPERAR DADOS", use_container_width=True):
-                u_r = next((u for u in records_u if str(u.get('Email', '')).strip().lower() == e_rec.strip().lower()), None)
+                u_r = next((u for u in records_u if str(u.get('Email', '')).strip().lower() == e_recup.strip().lower()), None)
                 if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')}")
                 else: st.error("E-mail não encontrado.")
     else:
         u = st.session_state.usuario_logado
+        
+        # --- BARRA LATERAL (SIDEBAR) CORRIGIDA ---
         st.sidebar.markdown("### 👤 Usuário Conectado")
         st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
-        if st.sidebar.button("Sair", use_container_width=True): st.session_state.usuario_logado = None; st.rerun()
+        
+        if st.sidebar.button("Sair", use_container_width=True): 
+            st.session_state.usuario_logado = None
+            st.rerun()
+        
+        # Créditos movidos para o final da sidebar
         st.sidebar.markdown("---")
         st.sidebar.caption("Desenvolvido por:")
         st.sidebar.write("MAJ ANDRÉ AGUIAR - CAES")
@@ -203,25 +188,30 @@ try:
             c1, c2 = st.columns(2)
             with c1:
                 pdf = FPDF()
-                pdf.add_page(); pdf.set_font("Arial", "B", 12)
+                pdf.add_page()
+                pdf.set_font("Arial", "B", 12)
                 pdf.cell(190, 10, "LISTA DE PRESENÇA - ROTA NOVA IGUAÇU", ln=True, align="C")
-                pdf.ln(5); pdf.set_font("Arial", "B", 8)
+                pdf.ln(5)
+                pdf.set_font("Arial", "B", 8)
                 headers = ["Nº", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
                 col_widths = [15, 25, 80, 70]
                 for i, h in enumerate(headers): pdf.cell(col_widths[i], 8, h, border=1, align="C")
-                pdf.ln(); pdf.set_font("Arial", "", 8)
+                pdf.ln()
+                pdf.set_font("Arial", "", 8)
                 for _, r in df_o.iterrows():
                     pdf.cell(col_widths[0], 8, str(r['Nº']), border=1, align="C")
                     pdf.cell(col_widths[1], 8, str(r['GRADUAÇÃO']), border=1, align="C")
                     pdf.cell(col_widths[2], 8, str(r['NOME'])[:45], border=1)
                     pdf.cell(col_widths[3], 8, str(r['LOTAÇÃO'])[:40], border=1)
                     pdf.ln()
-                st.download_button("📄 PDF", pdf.output(dest="S").encode("latin-1"), "lista.pdf", use_container_width=True)
+                st.download_button("📄 PDF", pdf.output(dest="S").encode("latin-1"), "lista_presenca.pdf", use_container_width=True)
             with c2:
                 txt_w = f"*🚌 LISTA DE PRESENÇA*\n\n"
                 for _, r in df_o.iterrows(): txt_w += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']}\n"
                 st.markdown(f'<a href="https://wa.me/?text={urllib.parse.quote(txt_w)}" target="_blank"><button style="width:100%; height:38px; background-color:#25D366; color:white; border:none; border-radius:4px; font-weight:bold;">🟢 WHATSAPP</button></a>', unsafe_allow_html=True)
 
+    # Rodapé principal da página
     st.markdown(f'<div class="footer">Desenvolvido por: <b>MAJ ANDRÉ AGUIAR - CAES</b></div>', unsafe_allow_html=True)
 
-except Exception as e: st.error(f"⚠️ Erro: {e}")
+except Exception as e:
+    st.error(f"⚠️ Erro: {e}")
