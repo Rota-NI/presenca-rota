@@ -6,6 +6,7 @@ from datetime import datetime, time, timedelta
 import pytz
 from fpdf import FPDF
 import urllib.parse
+import time as time_module
 
 # --- CONFIGURAÇÃO DE ACESSO ---
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -50,7 +51,8 @@ def verificar_status_e_limpar(sheet_p, dados_p):
             ultima_dt = fuso_br.localize(datetime.strptime(ultima_str, '%d/%m/%Y %H:%M:%S'))
             if ultima_dt < marco:
                 sheet_p.resize(rows=1); sheet_p.resize(rows=100)
-                st.cache_data.clear(); st.rerun()
+                st.cache_data.clear()
+                st.rerun()
         except: pass
     
     is_aberto = (dia_semana == 6 and hora_atual >= time(19, 0)) or \
@@ -102,6 +104,8 @@ st.markdown('<div class="titulo-container"><div class="titulo-responsivo">🚌 R
 
 if 'usuario_logado' not in st.session_state: st.session_state.usuario_logado = None
 if 'conf_ativa' not in st.session_state: st.session_state.conf_ativa = False
+# Controle de Sincronização
+if 'sincronizado_bd' not in st.session_state: st.session_state.sincronizado_bd = False
 
 try:
     records_u = buscar_usuarios_cadastrados()
@@ -116,8 +120,13 @@ try:
                 l_e, l_s = st.text_input("E-mail:"), st.text_input("Senha:", type="password")
                 if st.form_submit_button("ENTRAR", use_container_width=True):
                     u_a = next((u for u in records_u if str(u.get('Email','')).strip().lower() == l_e.strip().lower() and str(u.get('Senha','')) == str(l_s)), None)
-                    if u_a: st.session_state.usuario_logado = u_a; st.rerun()
+                    if u_a: 
+                        st.session_state.usuario_logado = u_a
+                        st.session_state.sincronizado_bd = False # Reseta trava para verificar BD no login
+                        st.cache_data.clear()
+                        st.rerun()
                     else: st.error("E-mail ou senha incorretos.")
+        # ... Mantendo as abas t2, t3 e t4 conforme o seu script anterior ...
         with t2:
             with st.form("form_novo_cadastro"):
                 n_n, n_e = st.text_input("Nome de Escala:"), st.text_input("E-mail (Login):")
@@ -129,7 +138,6 @@ try:
                         doc_escrita.worksheet("Usuarios").append_row([n_n, n_g, n_l, n_p, n_o, n_e])
                         st.cache_data.clear(); st.success("Cadastro realizado!")
         with t3:
-            # INSTRUÇÕES ATUALIZADAS CONFORME SOLICITADO
             st.markdown("### 📖 Guia de Uso")
             st.success("📲 **COMO INSTALAR (TELA INICIAL)**")
             st.markdown("**No Chrome (Android):** Toque nos 3 pontos (⋮) e em 'Instalar Aplicativo'.")
@@ -150,10 +158,27 @@ try:
                 if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')}")
                 else: st.error("E-mail não encontrado.")
     else:
+        # DETERMINAÇÃO: SINCRONIZAÇÃO INTELIGENTE PÓS-CARGA
+        if not st.session_state.sincronizado_bd:
+            time_module.sleep(1) # Aguarda 1 segundo conforme solicitado
+            client_sync = conectar_gsheets()
+            sheet_sync = client_sync.open("ListaPresenca").sheet1
+            dados_reais = sheet_sync.get_all_values()
+            
+            # Se BD está vazio mas o cache local (dados_p) ainda tem dados
+            if len(dados_reais) <= 1 and (dados_p and len(dados_p) > 1):
+                st.cache_data.clear()
+                st.session_state.sincronizado_bd = True
+                st.rerun()
+            st.session_state.sincronizado_bd = True
+
         u = st.session_state.usuario_logado
         st.sidebar.markdown("### 👤 Usuário Conectado")
         st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
-        if st.sidebar.button("Sair", use_container_width=True): st.session_state.usuario_logado = None; st.rerun()
+        if st.sidebar.button("Sair", use_container_width=True): 
+            st.session_state.usuario_logado = None
+            st.session_state.sincronizado_bd = False
+            st.rerun()
         st.sidebar.markdown("---")
         st.sidebar.caption("Desenvolvido por:")
         st.sidebar.write("MAJ ANDRÉ AGUIAR - CAES")
@@ -186,7 +211,6 @@ try:
                             st.cache_data.clear(); st.rerun()
         else: st.info("⌛ Lista fechada para novas inscrições.")
 
-        # Conferência exclusiva (3 primeiros e horários de embarque)
         if ja and pos <= 3 and janela_conf:
             st.divider(); st.subheader("📋 CONFERÊNCIA")
             if st.button("📝 PAINEL", use_container_width=True): st.session_state.conf_ativa = not st.session_state.conf_ativa
@@ -196,7 +220,6 @@ try:
         if dados_p and len(dados_p) > 1:
             st.subheader(f"Presentes ({len(df_o)})")
             if st.button("🔄 ATUALIZAR", use_container_width=True): st.cache_data.clear(); st.rerun()
-            # Tabela em HTML com largura compacta e controlada
             st.write(f'<div class="tabela-responsiva">{df_v.drop(columns=["EMAIL"]).to_html(index=False, justify="center", border=0, escape=False)}</div>', unsafe_allow_html=True)
             
             c1, c2 = st.columns(2)
