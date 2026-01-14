@@ -41,8 +41,8 @@ def verificar_status_e_limpar(sheet_p, dados_p):
     hora_atual, dia_semana = agora.time(), agora.weekday()
 
     if hora_atual >= time(18, 50): marco = agora.replace(hour=18, minute=50, second=0, microsecond=0)
-    elif hora_atual >= time(13, 50): marco = agora.replace(hour=13, minute=50, second=0, microsecond=0)
-    else: marco = (agora - timedelta(days=1)).replace(hour=13, minute=50, second=0, microsecond=0)
+    elif hora_atual >= time(6, 50): marco = agora.replace(hour=6, minute=50, second=0, microsecond=0)
+    else: marco = (agora - timedelta(days=1)).replace(hour=18, minute=50, second=0, microsecond=0)
 
     if dados_p and len(dados_p) > 1:
         try:
@@ -50,8 +50,7 @@ def verificar_status_e_limpar(sheet_p, dados_p):
             ultima_dt = fuso_br.localize(datetime.strptime(ultima_str, '%d/%m/%Y %H:%M:%S'))
             if ultima_dt < marco:
                 sheet_p.resize(rows=1); sheet_p.resize(rows=100)
-                st.cache_data.clear()
-                st.rerun()
+                st.cache_data.clear(); st.rerun()
         except: pass
     
     is_aberto = (dia_semana == 6 and hora_atual >= time(19, 0)) or \
@@ -88,7 +87,7 @@ st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered")
 # Script de Integração Telegram
 st.markdown('<script src="https://telegram.org/js/telegram-web-app.js"></script>', unsafe_allow_html=True)
 
-# Estilos CSS
+# Estilos CSS (Largura Compacta da Tabela)
 st.markdown("""<style>
     .titulo-container { text-align: center; width: 100%; }
     .titulo-responsivo { font-size: clamp(1.2rem, 5vw, 2.2rem); font-weight: bold; margin-bottom: 20px; }
@@ -99,12 +98,10 @@ st.markdown("""<style>
     .footer { text-align: center; font-size: 11px; color: #888; margin-top: 40px; padding: 10px; border-top: 1px solid #eee; }
 </style>""", unsafe_allow_html=True)
 
-st.markdown('<div class="titulo-container"><div class="titulo-responsivo">🚌 ROTA NOVA IGUAÇU 🚌</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="titulo-container"><div class="titulo-responsivo">🚌 ROTA NOVA IGUAÇU</div></div>', unsafe_allow_html=True)
 
 if 'usuario_logado' not in st.session_state: st.session_state.usuario_logado = None
 if 'conf_ativa' not in st.session_state: st.session_state.conf_ativa = False
-# Controle de sincronização pós-carga
-if 'sync_completa' not in st.session_state: st.session_state.sync_completa = False
 
 try:
     records_u = buscar_usuarios_cadastrados()
@@ -119,11 +116,7 @@ try:
                 l_e, l_s = st.text_input("E-mail:"), st.text_input("Senha:", type="password")
                 if st.form_submit_button("ENTRAR", use_container_width=True):
                     u_a = next((u for u in records_u if str(u.get('Email','')).strip().lower() == l_e.strip().lower() and str(u.get('Senha','')) == str(l_s)), None)
-                    if u_a: 
-                        st.cache_data.clear()
-                        st.session_state.usuario_logado = u_a
-                        st.session_state.sync_completa = False # Reinicia trava para nova carga
-                        st.rerun()
+                    if u_a: st.session_state.usuario_logado = u_a; st.rerun()
                     else: st.error("E-mail ou senha incorretos.")
         with t2:
             with st.form("form_novo_cadastro"):
@@ -136,24 +129,19 @@ try:
                         doc_escrita.worksheet("Usuarios").append_row([n_n, n_g, n_l, n_p, n_o, n_e])
                         st.cache_data.clear(); st.success("Cadastro realizado!")
         with t3:
+            # INSTRUÇÕES ATUALIZADAS CONFORME SOLICITADO
             st.markdown("### 📖 Guia de Uso")
             st.success("📲 **COMO INSTALAR (TELA INICIAL)**")
             st.markdown("**No Chrome (Android):** Toque nos 3 pontos (⋮) e em 'Instalar Aplicativo'.")
             st.markdown("**No Safari (iPhone):** Toque em Compartilhar (⬆️) e em 'Adicionar à Tela de Início'.")
             st.markdown("**No Telegram:** Procure o bot `@RotaNovaIguacuBot` e toque no botão 'Abrir App Rota' no menu.")
-            st.markdown("**QR CODE:** https://drive.google.com/file/d/1RU1i0u1hSqdfaL3H7HUaeV4hRvR2cROf/view?usp=sharing")
-            st.markdown("**LINK PARA NAVEGADOR:** https://presenca-rota-gbiwh9bjrwdergzc473xyg.streamlit.app/")
             st.divider()
-            st.info("**CADASTRO E LOGIN:** Use seu e-mail como identificador único.")
+            st.info("**1. Cadastro e Login:** Use seu e-mail como identificador único.")
             st.markdown("""
-            **1. Regras de Horário:**
-            * **Manhã:** Inscrições abertas até às 05:00h. Reabre às 07:00h.
-            * **Tarde:** Inscrições abertas até às 17:00h. Reabre às 19:00h.
+            **2. Regras de Horário:**
+            * **Manhã:** Inscrições abertas até às 05:00h.
+            * **Tarde:** Inscrições abertas até às 17:00h.
             * **Finais de Semana:** Abrem domingo às 19:00h.
-            
-            **2. Observação:**
-            * Nos períodos em que a lista ficar suspensa para conferência (05:00h às 07:00h / 17:00h às 19:00h), os três PPMM que estiverem no topo da lista terão acesso à lista de check up (botão no topo da lista) para tirar a falta de quem estará entrando no ônibus. O mais antigo assume e na ausência dele o seu sucessor assume.
-            * Após o horário de 06:50h e de 18:50h, a lista será automaticamente zerada para que o novo ciclo da lista possa ocorrer. Sendo assim, caso queira manter um histórico de viagem, antes desses horários, faça o download do pdf e/ou do resumo do W.Zap.
             """)
         with t4:
             e_r = st.text_input("E-mail cadastrado:")
@@ -162,19 +150,10 @@ try:
                 if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')}")
                 else: st.error("E-mail não encontrado.")
     else:
-        # LOGICA DE SINCRONIZACAO POS-CARREGA TOTAL
-        if not st.session_state.sync_completa:
-            st.session_state.sync_completa = True
-            st.cache_data.clear()
-            st.rerun()
-
         u = st.session_state.usuario_logado
         st.sidebar.markdown("### 👤 Usuário Conectado")
         st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
-        if st.sidebar.button("Sair", use_container_width=True): 
-            st.session_state.usuario_logado = None
-            st.session_state.sync_completa = False
-            st.rerun()
+        if st.sidebar.button("Sair", use_container_width=True): st.session_state.usuario_logado = None; st.rerun()
         st.sidebar.markdown("---")
         st.sidebar.caption("Desenvolvido por:")
         st.sidebar.write("MAJ ANDRÉ AGUIAR - CAES")
@@ -207,6 +186,7 @@ try:
                             st.cache_data.clear(); st.rerun()
         else: st.info("⌛ Lista fechada para novas inscrições.")
 
+        # Conferência exclusiva (3 primeiros e horários de embarque)
         if ja and pos <= 3 and janela_conf:
             st.divider(); st.subheader("📋 CONFERÊNCIA")
             if st.button("📝 PAINEL", use_container_width=True): st.session_state.conf_ativa = not st.session_state.conf_ativa
@@ -216,6 +196,7 @@ try:
         if dados_p and len(dados_p) > 1:
             st.subheader(f"Presentes ({len(df_o)})")
             if st.button("🔄 ATUALIZAR", use_container_width=True): st.cache_data.clear(); st.rerun()
+            # Tabela em HTML com largura compacta e controlada
             st.write(f'<div class="tabela-responsiva">{df_v.drop(columns=["EMAIL"]).to_html(index=False, justify="center", border=0, escape=False)}</div>', unsafe_allow_html=True)
             
             c1, c2 = st.columns(2)
