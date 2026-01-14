@@ -17,8 +17,8 @@ def conectar_gsheets():
     creds = Credentials.from_service_account_info(info, scopes=scope)
     return gspread.authorize(creds)
 
-# OTIMIZAÇÃO: Cache estendido para evitar múltiplas leituras simultâneas
-@st.cache_data(ttl=30)
+# OTIMIZAÇÃO CRÍTICA: Cache de longa duração para evitar Erro 429
+@st.cache_data(ttl=300)
 def buscar_usuarios_cadastrados():
     try:
         client = conectar_gsheets()
@@ -26,18 +26,16 @@ def buscar_usuarios_cadastrados():
         return sheet_u.get_all_records()
     except: return []
 
-@st.cache_data(ttl=15)
+@st.cache_data(ttl=300)
 def buscar_limite_dinamico():
     try:
         client = conectar_gsheets()
         doc = client.open("ListaPresenca")
-        try:
-            sheet_c = doc.worksheet("Config")
+        try: sheet_c = doc.worksheet("Config")
         except:
             sheet_c = doc.add_worksheet(title="Config", rows="10", cols="5")
             sheet_c.update('A1:A2', [['LIMITE'], ['100']]) 
-        val = sheet_c.acell('A2').value
-        return int(val) if val else 100
+        return int(sheet_c.acell('A2').value)
     except: return 100
 
 @st.cache_data(ttl=15)
@@ -58,7 +56,6 @@ def verificar_status_e_limpar(sheet_p, dados_p):
     if hora_atual >= time(18, 50): marco = agora.replace(hour=18, minute=50, second=0, microsecond=0)
     elif hora_atual >= time(6, 50): marco = agora.replace(hour=6, minute=50, second=0, microsecond=0)
     else: marco = (agora - timedelta(days=1)).replace(hour=18, minute=50, second=0, microsecond=0)
-    
     if dados_p and len(dados_p) > 1:
         try:
             ultima_str = dados_p[-1][0]
@@ -67,11 +64,9 @@ def verificar_status_e_limpar(sheet_p, dados_p):
                 sheet_p.resize(rows=1); sheet_p.resize(rows=100)
                 st.cache_data.clear(); st.rerun()
         except: pass
-    
     is_aberto = (dia_semana == 6 and hora_atual >= time(19, 0)) or \
                 (dia_semana in [0, 1, 2, 3] and (hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(17, 0) or hora_atual >= time(19, 0))) or \
                 (dia_semana == 4 and time(7, 0) <= hora_atual <= time(17, 0))
-    
     janela_conferencia = (time(5, 0) < hora_atual < time(7, 0)) or (time(17, 0) < hora_atual < time(19, 0))
     return is_aberto, janela_conferencia
 
@@ -116,10 +111,12 @@ try:
     doc_escrita = conectar_escrita_direta()
     sheet_p_escrita = doc_escrita.sheet1
     sheet_u_escrita = doc_escrita.worksheet("Usuarios")
-    dados_p = buscar_presenca_atualizada()
-    aberto, janela_conf = verificar_status_e_limpar(sheet_p_escrita, dados_p)
+    
+    # CARREGAMENTO OTIMIZADO
     records_u = buscar_usuarios_cadastrados()
     limite_max = buscar_limite_dinamico()
+    dados_p = buscar_presenca_atualizada()
+    aberto, janela_conf = verificar_status_e_limpar(sheet_p_escrita, dados_p)
 
     if st.session_state.usuario_logado is None and not st.session_state.is_admin:
         t1, t2, t3, t4, t5 = st.tabs(["Login", "Cadastro", "Instruções", "Recuperar", "ADM"])
@@ -131,7 +128,7 @@ try:
                     if u_a:
                         if str(u_a.get('STATUS','')).strip().upper() == 'ATIVO':
                             st.session_state.usuario_logado = u_a; st.rerun()
-                        else: st.error("Acesso bloqueado. Aguardando aprovação do Administrador.")
+                        else: st.error("Aguardando aprovação do Administrador.")
                     else: st.error("Dados incorretos.")
         with t2:
             if len(records_u) >= limite_max: st.warning(f"⚠️ Limite de {limite_max} usuários atingido.")
@@ -181,48 +178,42 @@ try:
 
     elif st.session_state.is_admin:
         st.header("🛡️ PAINEL ADMINISTRATIVO")
-        if st.button("⬅️ SAIR DO PAINEL"): 
-            st.session_state.is_admin = False
-            st.rerun()
+        if st.button("⬅️ SAIR DO PAINEL"): st.session_state.is_admin = False; st.rerun()
         
         st.subheader("⚙️ Configurações Globais")
         novo_limite = st.number_input("Limite máximo de usuários:", value=limite_max)
         if st.button("💾 SALVAR NOVO LIMITE"):
-            sheet_config = doc_escrita.worksheet("Config")
-            sheet_config.update('A2', [[str(novo_limite)]])
+            doc_escrita.worksheet("Config").update('A2', [[str(novo_limite)]])
             st.cache_data.clear(); st.success("Limite atualizado!"); st.rerun()
 
         st.divider(); st.subheader("👥 Gestão de Usuários")
         busca = st.text_input("🔍 Pesquisar por Nome ou E-mail:").strip().lower()
         
-        c_adm1, c_adm2 = st.columns(2)
-        with c_adm1:
-            if st.button("✅ ATIVAR TODOS E DESLOGAR", use_container_width=True):
-                with st.spinner("Sincronizando Banco de Dados..."):
-                    num = len(records_u)
-                    if num > 0:
-                        status_list = [["ATIVO"]] * num
-                        sheet_u_escrita.update(f'H2:H{num+1}', status_list)
-                        st.info("Status atualizados. Deslogando em 3 segundos...")
-                        time_module.sleep(3)
-                        for key in list(st.session_state.keys()): del st.session_state[key]
-                        st.cache_data.clear(); st.rerun()
-        with c_adm2:
-            if st.button("🔄 SINCRONIZAR STATUS", use_container_width=True):
-                st.cache_data.clear(); st.rerun()
+        if st.button("✅ ATIVAR TODOS E DESLOGAR", use_container_width=True):
+            num = len(records_u)
+            if num > 0:
+                sheet_u_escrita.update(f'H2:H{num+1}', [["ATIVO"]] * num)
+                st.info("Sincronizando... Deslogando em 3 segundos.")
+                time_module.sleep(3); st.cache_data.clear()
+                for key in list(st.session_state.keys()): del st.session_state[key]
+                st.rerun()
 
         for i, user in enumerate(records_u):
             nome_u, email_u = str(user.get('Nome','')).lower(), str(user.get('Email','')).lower()
             if busca == "" or busca in nome_u or busca in email_u:
-                status_atual = str(user.get('STATUS')).upper()
-                is_ativo = (status_atual == 'ATIVO')
-                with st.expander(f"{user.get('Graduação')} {user.get('Nome')} - {status_atual}"):
+                status = str(user.get('STATUS')).upper()
+                with st.expander(f"{user.get('Graduação')} {user.get('Nome')} - {status}"):
                     c1, c2, c3 = st.columns([2, 1, 1])
                     c1.write(f"📧 {user.get('Email')} | 📱 {user.get('TELEFONE')}")
-                    escolha = c2.checkbox("Liberar", value=is_ativo, key=f"adm_chk_{i}")
-                    if escolha != is_ativo:
-                        sheet_u_escrita.update_cell(i+2, 8, "ATIVO" if escolha else "INATIVO")
-                        st.cache_data.clear(); st.rerun()
+                    is_ativo = (status == 'ATIVO')
+                    if c2.checkbox("Liberar", value=is_ativo, key=f"adm_chk_{i}"):
+                        if not is_ativo: 
+                            sheet_u_escrita.update_cell(i+2, 8, "ATIVO")
+                            st.cache_data.clear(); st.rerun()
+                    else:
+                        if is_ativo:
+                            sheet_u_escrita.update_cell(i+2, 8, "INATIVO")
+                            st.cache_data.clear(); st.rerun()
                     if c3.button("🗑️", key=f"del_{i}"):
                         sheet_u_escrita.delete_rows(i+2); st.cache_data.clear(); st.rerun()
 
