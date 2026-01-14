@@ -83,10 +83,18 @@ def aplicar_ordenacao(df):
 
 # --- INTERFACE ---
 st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered")
+
+# Script de Integração Telegram
+st.markdown('<script src="https://telegram.org/js/telegram-web-app.js"></script>', unsafe_allow_html=True)
+
+# CSS Ajustado para visual compacto no celular
 st.markdown("""<style>
     .titulo-container { text-align: center; width: 100%; }
     .titulo-responsivo { font-size: clamp(1.2rem, 5vw, 2.2rem); font-weight: bold; margin-bottom: 20px; }
     .stCheckbox { background-color: #f8f9fa; padding: 5px; border-radius: 4px; border: 1px solid #eee; }
+    .tabela-responsiva { width: 100%; max-width: 100%; overflow-x: auto; }
+    table { width: 100% !important; font-size: 10px; border-collapse: collapse; }
+    th, td { text-align: center; padding: 4px !important; white-space: normal !important; word-wrap: break-word; }
     .footer { text-align: center; font-size: 11px; color: #888; margin-top: 40px; padding: 10px; border-top: 1px solid #eee; }
 </style>""", unsafe_allow_html=True)
 
@@ -102,43 +110,40 @@ try:
     sheet_p_escrita = doc_escrita.sheet1
 
     if st.session_state.usuario_logado is None:
-        t1, t2, t3 = st.tabs(["Login", "Cadastro", "Esqueci a Senha"])
+        t1, t2, t3, t4 = st.tabs(["Login", "Cadastro", "Instruções", "Recuperar"])
         with t1:
             with st.form("form_login"):
-                l_e = st.text_input("E-mail:")
-                l_s = st.text_input("Senha:", type="password")
+                l_e, l_s = st.text_input("E-mail:"), st.text_input("Senha:", type="password")
                 if st.form_submit_button("ENTRAR", use_container_width=True):
                     u_a = next((u for u in records_u if str(u.get('Email','')).strip().lower() == l_e.strip().lower() and str(u.get('Senha','')) == str(l_s)), None)
                     if u_a: st.session_state.usuario_logado = u_a; st.rerun()
                     else: st.error("E-mail ou senha incorretos.")
         with t2:
             with st.form("form_novo_cadastro"):
-                n_nome, n_email = st.text_input("Nome de Escala:"), st.text_input("E-mail (Login):")
-                n_grad = st.selectbox("Graduação:", ["TCEL", "MAJ", "CAP", "1º TEN", "2º TEN", "SUBTEN", "1º SGT", "2º SGT", "3º SGT", "CB", "SD", "FC COM", "FC TER"])
-                n_lot, n_orig, n_pass = st.text_input("Lotação:"), st.selectbox("Origem:", ["QG", "RMCF", "OUTROS"]), st.text_input("Senha:", type="password")
+                n_n, n_e = st.text_input("Nome de Escala:"), st.text_input("E-mail (Login):")
+                n_g = st.selectbox("Graduação:", ["TCEL", "MAJ", "CAP", "1º TEN", "2º TEN", "SUBTEN", "1º SGT", "2º SGT", "3º SGT", "CB", "SD", "FC COM", "FC TER"])
+                n_l, n_o, n_p = st.text_input("Lotação:"), st.selectbox("Origem:", ["QG", "RMCF", "OUTROS"]), st.text_input("Senha:", type="password")
                 if st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True):
-                    if any(str(u.get('Email','')).strip().lower() == n_email.strip().lower() for u in records_u): st.error("E-mail já cadastrado.")
+                    if any(str(u.get('Email','')).strip().lower() == n_e.strip().lower() for u in records_u): st.error("E-mail já cadastrado.")
                     else:
-                        doc_escrita.worksheet("Usuarios").append_row([n_nome, n_grad, n_lot, n_pass, n_orig, n_email])
+                        doc_escrita.worksheet("Usuarios").append_row([n_n, n_g, n_l, n_p, n_o, n_e])
                         st.cache_data.clear(); st.success("Cadastro realizado!")
         with t3:
-            e_recup = st.text_input("Digite o e-mail cadastrado:")
+            st.markdown("### 📖 Guia de Uso")
+            st.success("📲 **ACESSO PELO TELEGRAM**")
+            st.info("No bot `@RotaNovaIguacuBot`, use o botão 'Abrir App Rota' no menu inferior.")
+            st.markdown("* **Horários:** Manhã (até 05h), Tarde (até 17h), Domingo (abre 19h).")
+        with t4:
+            e_r = st.text_input("E-mail cadastrado:")
             if st.button("RECUPERAR DADOS", use_container_width=True):
-                u_r = next((u for u in records_u if str(u.get('Email', '')).strip().lower() == e_recup.strip().lower()), None)
+                u_r = next((u for u in records_u if str(u.get('Email', '')).strip().lower() == e_r.strip().lower()), None)
                 if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')}")
                 else: st.error("E-mail não encontrado.")
     else:
         u = st.session_state.usuario_logado
-        
-        # --- BARRA LATERAL (SIDEBAR) CORRIGIDA ---
         st.sidebar.markdown("### 👤 Usuário Conectado")
         st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
-        
-        if st.sidebar.button("Sair", use_container_width=True): 
-            st.session_state.usuario_logado = None
-            st.rerun()
-        
-        # Créditos movidos para o final da sidebar
+        if st.sidebar.button("Sair", use_container_width=True): st.session_state.usuario_logado = None; st.rerun()
         st.sidebar.markdown("---")
         st.sidebar.caption("Desenvolvido por:")
         st.sidebar.write("MAJ ANDRÉ AGUIAR - CAES")
@@ -163,55 +168,46 @@ try:
                     sheet_p_escrita.append_row([agora, orig, u.get('Graduação'), u.get('Nome'), u.get('Lotação'), u.get('Email')])
                     st.cache_data.clear(); st.rerun()
             else:
-                st.success(f"✅ Presença registrada na posição: {pos}º")
+                st.success(f"✅ Presença registrada: {pos}º")
                 if st.button("❌ EXCLUIR MINHA ASSINATURA", use_container_width=True):
                     for idx, r in enumerate(dados_p):
                         if len(r) >= 6 and str(r[5]).strip().lower() == email_logado:
                             sheet_p_escrita.delete_rows(idx + 1)
                             st.cache_data.clear(); st.rerun()
-        else: st.info("⌛ Lista fechada para novas inscrições.")
+        else: st.info("⌛ Lista fechada para inscrições.")
 
         if ja and pos <= 3 and janela_conf:
-            st.divider(); st.subheader("📋 CONFERÊNCIA DE EMBARQUE")
-            if st.button("📝 ABRIR / FECHAR PAINEL", use_container_width=True):
-                st.session_state.conf_ativa = not st.session_state.conf_ativa
+            st.divider(); st.subheader("📋 CONFERÊNCIA")
+            if st.button("📝 PAINEL", use_container_width=True): st.session_state.conf_ativa = not st.session_state.conf_ativa
             if st.session_state.conf_ativa:
-                for i, row in df_o.iterrows():
-                    st.checkbox(f"{row['Nº']} - {row.get('GRADUAÇÃO')} {row.get('NOME')}", key=f"chk_{i}_{row.get('EMAIL')}")
-            st.divider()
+                for i, row in df_o.iterrows(): st.checkbox(f"{row['Nº']} - {row.get('NOME')}", key=f"chk_{i}_{row.get('EMAIL')}")
 
         if dados_p and len(dados_p) > 1:
             st.subheader(f"Presentes ({len(df_o)})")
-            if st.button("🔄 ATUALIZAR LISTA", use_container_width=True): st.cache_data.clear(); st.rerun()
+            if st.button("🔄 ATUALIZAR", use_container_width=True): st.cache_data.clear(); st.rerun()
+            # Tabela em HTML com largura controlada
             st.write(f'<div class="tabela-responsiva">{df_v.drop(columns=["EMAIL"]).to_html(index=False, justify="center", border=0, escape=False)}</div>', unsafe_allow_html=True)
             
             c1, c2 = st.columns(2)
             with c1:
                 pdf = FPDF()
-                pdf.add_page()
-                pdf.set_font("Arial", "B", 12)
-                pdf.cell(190, 10, "LISTA DE PRESENÇA - ROTA NOVA IGUAÇU", ln=True, align="C")
-                pdf.ln(5)
-                pdf.set_font("Arial", "B", 8)
+                pdf.add_page(); pdf.set_font("Arial", "B", 12)
+                pdf.cell(190, 10, "LISTA DE PRESENÇA", ln=True, align="C")
+                pdf.ln(5); pdf.set_font("Arial", "B", 8)
                 headers = ["Nº", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
                 col_widths = [15, 25, 80, 70]
                 for i, h in enumerate(headers): pdf.cell(col_widths[i], 8, h, border=1, align="C")
-                pdf.ln()
-                pdf.set_font("Arial", "", 8)
+                pdf.ln(); pdf.set_font("Arial", "", 8)
                 for _, r in df_o.iterrows():
                     pdf.cell(col_widths[0], 8, str(r['Nº']), border=1, align="C")
                     pdf.cell(col_widths[1], 8, str(r['GRADUAÇÃO']), border=1, align="C")
                     pdf.cell(col_widths[2], 8, str(r['NOME'])[:45], border=1)
-                    pdf.cell(col_widths[3], 8, str(r['LOTAÇÃO'])[:40], border=1)
-                    pdf.ln()
-                st.download_button("📄 PDF", pdf.output(dest="S").encode("latin-1"), "lista_presenca.pdf", use_container_width=True)
+                    pdf.cell(col_widths[3], 8, str(r['LOTAÇÃO'])[:40], border=1); pdf.ln()
+                st.download_button("📄 PDF", pdf.output(dest="S").encode("latin-1"), "lista.pdf", use_container_width=True)
             with c2:
                 txt_w = f"*🚌 LISTA DE PRESENÇA*\n\n"
                 for _, r in df_o.iterrows(): txt_w += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']}\n"
                 st.markdown(f'<a href="https://wa.me/?text={urllib.parse.quote(txt_w)}" target="_blank"><button style="width:100%; height:38px; background-color:#25D366; color:white; border:none; border-radius:4px; font-weight:bold;">🟢 WHATSAPP</button></a>', unsafe_allow_html=True)
 
-    # Rodapé principal da página
     st.markdown(f'<div class="footer">Desenvolvido por: <b>MAJ ANDRÉ AGUIAR - CAES</b></div>', unsafe_allow_html=True)
-
-except Exception as e:
-    st.error(f"⚠️ Erro: {e}")
+except Exception as e: st.error(f"⚠️ Erro: {e}")
