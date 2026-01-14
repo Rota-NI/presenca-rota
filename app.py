@@ -35,8 +35,8 @@ def verificar_status():
 
     return aberto, deve_limpar
 
-# --- FUNÇÃO DE ORDENAÇÃO GLOBAL ---
-def aplicar_ordenacao(df):
+# --- FUNÇÃO DE ORDENAÇÃO E NUMERAÇÃO ---
+def aplicar_ordenacao_e_numeracao(df):
     peso_destino = {"QG": 1, "RMCF": 2, "OUTROS": 3}
     peso_grad = {
         "TCEL": 1, "MAJ": 2, "CAP": 3, "1º TEN": 4, "2º TEN": 5, "SUBTEN": 6,
@@ -52,13 +52,25 @@ def aplicar_ordenacao(df):
     df['p_grad'] = df[col_grad].map(peso_grad).fillna(999)
     df['dt_temp'] = pd.to_datetime(df[col_data], dayfirst=True)
 
+    # Ordenação conforme prioridades estabelecidas
     df = df.sort_values(by=['is_fc', 'p_dest', 'p_grad', 'dt_temp']).reset_index(drop=True)
+    
+    # Criar coluna de numeração personalizada (1 a 38, depois Exc-01...)
+    def formatar_posicao(i):
+        pos = i + 1
+        if pos <= 38:
+            return str(pos)
+        else:
+            exc_num = pos - 38
+            return f"Exc-{exc_num:02d}"
+
+    df.insert(0, 'Nº', [formatar_posicao(i) for i in range(len(df))])
+    
     return df.drop(columns=['is_fc', 'p_dest', 'p_grad', 'dt_temp'])
 
 # --- INTERFACE ---
 st.markdown("<h1 style='text-align: center;'>🚌 ROTA NOVA IGUAÇU</h1>", unsafe_allow_html=True)
 
-# --- OBSERVAÇÕES ABAIXO DO TÍTULO ---
 st.caption("Obs. 1: Preencher lista com Posto/Graduação, Nome de escala e lotação.")
 st.caption("""
 Obs. 2: Lista será finalizada e apurada às 5h e 17h, seguindo a ordem de prioridade e de vagas previstas (38 vagas):
@@ -103,30 +115,36 @@ try:
 
     dados = sheet.get_all_values()
     if len(dados) > 1:
-        df = pd.DataFrame(dados[1:], columns=dados[0])
-        df_sorted = aplicar_ordenacao(df)
+        df_bruto = pd.DataFrame(dados[1:], columns=dados[0])
+        df_sorted = aplicar_ordenacao_e_numeracao(df_bruto)
         
-        st.subheader("Pessoas Presentes")
+        # --- QUANTIDADE DE PESSOAS NO TÍTULO ---
+        qtd_pessoas = len(df_sorted)
+        st.subheader(f"Pessoas Presentes ({qtd_pessoas})")
+        
         st.table(df_sorted)
 
+        # PDF Gerado com a nova coluna Nº
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", "B", 14)
         pdf.cell(190, 10, "LISTA DE PRESENÇA - ROTA NOVA IGUAÇU", ln=True, align="C")
-        pdf.ln(5)
         pdf.set_font("Arial", "B", 8)
-        w = [35, 25, 25, 65, 40]
-        headers = ["DATA_HORA", "DESTINO", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
+        # Ajuste de larguras para incluir a nova coluna Nº
+        w = [12, 30, 20, 25, 63, 40]
+        headers = ["Nº", "DATA_HORA", "DESTINO", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
         for i, h in enumerate(headers): pdf.cell(w[i], 8, h, border=1, align="C")
         pdf.ln()
         
         pdf.set_font("Arial", "", 8)
         for _, r in df_sorted.iterrows():
-            for i in range(5): pdf.cell(w[i], 8, str(r[i]), border=1)
+            for i in range(len(headers)): 
+                pdf.cell(w[i], 8, str(r[i]), border=1)
             pdf.ln()
         
         st.download_button("📄 BAIXAR LISTA EM PDF", pdf.output(dest="S").encode("latin-1"), f"lista_{datetime.now().strftime('%Hh%M')}.pdf", "application/pdf")
     else:
+        st.subheader("Pessoas Presentes (0)")
         st.info("Nenhuma presença registrada ainda.")
 
 except Exception as e:
