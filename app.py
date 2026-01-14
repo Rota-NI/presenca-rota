@@ -456,7 +456,7 @@ try:
                     st.rerun()
 
             with c_up2:
-                st.caption("Atualiza sem estourar quota (refresh só quando você pede).")
+                st.caption("Atualiza...).")
 
             st.write(
                 f"<div class='tabela-responsiva'>{df_v.drop(columns=['EMAIL']).to_html(index=False, justify='center', border=0, escape=False)}</div>",
