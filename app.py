@@ -129,10 +129,19 @@ try:
                 else: st.error("E-mail não encontrado.")
     else:
         u = st.session_state.usuario_logado
-        st.sidebar.info(f"Conectado: {u.get('Graduação')} {u.get('Nome')}")
-        if st.sidebar.button("Sair", use_container_width=True): st.session_state.usuario_logado = None; st.rerun()
+        
+        # --- BARRA LATERAL (SIDEBAR) CORRIGIDA ---
+        st.sidebar.markdown("### 👤 Usuário Conectado")
+        st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
+        
+        if st.sidebar.button("Sair", use_container_width=True): 
+            st.session_state.usuario_logado = None
+            st.rerun()
+        
+        # Créditos movidos para o final da sidebar
         st.sidebar.markdown("---")
-        st.sidebar.write("**MAJ ANDRÉ AGUIAR - CAES**")
+        st.sidebar.caption("Desenvolvido por:")
+        st.sidebar.write("MAJ ANDRÉ AGUIAR - CAES")
 
         aberto, janela_conf = verificar_status_e_limpar(sheet_p_escrita, dados_p)
         df_o, df_v = pd.DataFrame(), pd.DataFrame()
@@ -178,24 +187,21 @@ try:
             
             c1, c2 = st.columns(2)
             with c1:
-                # --- GERAÇÃO CORRIGIDA DO PDF ---
                 pdf = FPDF()
                 pdf.add_page()
                 pdf.set_font("Arial", "B", 12)
                 pdf.cell(190, 10, "LISTA DE PRESENÇA - ROTA NOVA IGUAÇU", ln=True, align="C")
                 pdf.ln(5)
                 pdf.set_font("Arial", "B", 8)
-                # Cabeçalhos e Larguras
                 headers = ["Nº", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
                 col_widths = [15, 25, 80, 70]
                 for i, h in enumerate(headers): pdf.cell(col_widths[i], 8, h, border=1, align="C")
                 pdf.ln()
-                # Preenchimento das Linhas
                 pdf.set_font("Arial", "", 8)
                 for _, r in df_o.iterrows():
                     pdf.cell(col_widths[0], 8, str(r['Nº']), border=1, align="C")
                     pdf.cell(col_widths[1], 8, str(r['GRADUAÇÃO']), border=1, align="C")
-                    pdf.cell(col_widths[2], 8, str(r['NOME'])[:45], border=1) # Limita caracteres para não vazar
+                    pdf.cell(col_widths[2], 8, str(r['NOME'])[:45], border=1)
                     pdf.cell(col_widths[3], 8, str(r['LOTAÇÃO'])[:40], border=1)
                     pdf.ln()
                 st.download_button("📄 PDF", pdf.output(dest="S").encode("latin-1"), "lista_presenca.pdf", use_container_width=True)
@@ -204,5 +210,8 @@ try:
                 for _, r in df_o.iterrows(): txt_w += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']}\n"
                 st.markdown(f'<a href="https://wa.me/?text={urllib.parse.quote(txt_w)}" target="_blank"><button style="width:100%; height:38px; background-color:#25D366; color:white; border:none; border-radius:4px; font-weight:bold;">🟢 WHATSAPP</button></a>', unsafe_allow_html=True)
 
+    # Rodapé principal da página
     st.markdown(f'<div class="footer">Desenvolvido por: <b>MAJ ANDRÉ AGUIAR - CAES</b></div>', unsafe_allow_html=True)
-except Exception as e: st.error(f"⚠️ Erro: {e}")
+
+except Exception as e:
+    st.error(f"⚠️ Erro: {e}")
