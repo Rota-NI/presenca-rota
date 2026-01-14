@@ -56,13 +56,16 @@ def verificar_status_e_limpar(sheet_p):
 def aplicar_ordenacao_e_numeracao(df):
     if 'QG_RMCF_OUT' in df.columns: df = df.rename(columns={'QG_RMCF_OUT': 'ORIGEM'})
     elif 'QG_RMCF_OUTROS' in df.columns: df = df.rename(columns={'QG_RMCF_OUTROS': 'ORIGEM'})
+    
     peso_origem = {"QG": 1, "RMCF": 2, "OUTROS": 3}
     peso_grad = {"TCEL": 1, "MAJ": 2, "CAP": 3, "1º TEN": 4, "2º TEN": 5, "SUBTEN": 6, 
                  "1º SGT": 7, "2º SGT": 8, "3º SGT": 9, "CB": 10, "SD": 11, "FC COM": 101, "FC TER": 102}
+    
     df['is_fc'] = df['GRADUAÇÃO'].apply(lambda x: 1 if "FC" in str(x) else 0)
     df['p_orig'] = df['ORIGEM'].map(peso_origem).fillna(99)
     df['p_grad'] = df['GRADUAÇÃO'].map(peso_grad).fillna(999)
     df['dt_temp'] = pd.to_datetime(df['DATA_HORA'], dayfirst=True)
+    
     df = df.sort_values(by=['is_fc', 'p_orig', 'p_grad', 'dt_temp']).reset_index(drop=True)
     df.insert(0, 'Nº', [str(i+1) if i < 38 else f"Exc-{i-37:02d}" for i in range(len(df))])
     return df.drop(columns=['is_fc', 'p_orig', 'p_grad', 'dt_temp'])
@@ -70,7 +73,6 @@ def aplicar_ordenacao_e_numeracao(df):
 # --- INTERFACE ---
 st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered")
 
-# CSS para melhorar visual do checklist
 st.markdown("""
     <style>
     .titulo-container { text-align: center; width: 100%; }
@@ -91,7 +93,6 @@ try:
     sheet_p, sheet_u = doc.sheet1, doc.worksheet("Usuarios")
 
     if st.session_state.usuario_logado is None:
-        # --- LOGIN / CADASTRO (Omitido para brevidade, mantenha o código anterior aqui) ---
         t1, t2, t3 = st.tabs(["Login", "Cadastro", "Esqueci a Senha"])
         with t1:
             l_n = st.text_input("Usuário (Nome de Escala):")
@@ -101,10 +102,25 @@ try:
                 u_a = next((u for u in users if str(u['Nome']).strip() == l_n.strip() and str(u['Senha']).strip() == str(l_s).strip()), None)
                 if u_a: st.session_state.usuario_logado = u_a; st.rerun()
                 else: st.error("Usuário ou senha inválidos.")
-        # ... (abas t2 e t3 seguem iguais)
+        with t2:
+            with st.form("cad"):
+                n_n, n_e = st.text_input("Nome de Escala:"), st.text_input("E-mail para recuperação:")
+                n_g = st.selectbox("Graduação:", ["TCEL", "MAJ", "CAP", "1º TEN", "2º TEN", "SUBTEN", "1º SGT", "2º SGT", "3º SGT", "CB", "SD", "FC COM", "FC TER"])
+                n_u, n_d = st.text_input("Lotação:"), st.selectbox("Origem Padrão:", ["QG", "RMCF", "OUTROS"])
+                n_s = st.text_input("Crie uma Senha:", type="password")
+                if st.form_submit_button("Finalizar Cadastro", use_container_width=True):
+                    sheet_u.append_row([n_n, n_g, n_u, n_s, n_d, n_e])
+                    st.success("Cadastro realizado!")
+        with t3:
+            e_r = st.text_input("Digite o e-mail cadastrado:")
+            if st.button("Visualizar Meus Dados", use_container_width=True):
+                users = sheet_u.get_all_records()
+                u_r = next((u for u in users if str(u.get('Email', '')).strip().lower() == e_r.strip().lower()), None)
+                if u_r: st.info(f"Usuário: {u_r['Nome']} | Senha: {u_r['Senha']}")
+                else: st.error("E-mail não encontrado.")
     else:
         user = st.session_state.usuario_logado
-        st.sidebar.info(f"Logado: {user['Graduação']} {user['Nome']}")
+        st.sidebar.info(f"Conectado: {user['Graduação']} {user['Nome']}")
         if st.sidebar.button("Sair"): 
             st.session_state.usuario_logado = None
             st.rerun()
@@ -113,19 +129,16 @@ try:
         dados_p = sheet_p.get_all_values()
         df = pd.DataFrame()
         
-        # Lógica de Posicionamento
         ja = False
         posicao_usuario = 999
         if len(dados_p) > 1:
             df = aplicar_ordenacao_e_numeracao(pd.DataFrame(dados_p[1:], columns=dados_p[0]))
             ja = any(user['Nome'] == r[3] for r in dados_p[1:])
             if ja:
-                # Encontra a posição numérica do usuário logado na lista ordenada
                 try:
                     posicao_usuario = df.index[df['NOME'] == user['Nome']].tolist()[0] + 1
                 except: pass
 
-        # --- BOTÕES DE AÇÃO ---
         if aberto:
             if not ja:
                 orig_user = user.get('ORIGEM') or user.get('QG_RMCF_OUTROS') or "QG"
@@ -136,25 +149,25 @@ try:
             else:
                 st.warning(f"✅ Presença registrada. Sua posição atual: {posicao_usuario}º")
 
-        # --- FUNÇÃO EXCLUSIVA: DIÁRIO DE BORDO (CONFERÊNCIA) ---
+        # --- NOVA FUNCIONALIDADE: LISTA DE PRESENÇA (CONFERÊNCIA) ---
         if ja and posicao_usuario <= 2:
             st.divider()
-            st.subheader("🛠️ Painel de Controle (1º e 2º)")
+            st.subheader("📋 LISTA DE PRESENÇA")
             if st.button("📝 ABRIR DIÁRIO DE BORDO / CONFERÊNCIA", use_container_width=True):
                 st.session_state.conferencia_ativa = not st.session_state.conferencia_ativa
             
             if st.session_state.conferencia_ativa:
                 st.info("Marque os passageiros conforme entrarem no ônibus:")
                 for index, row in df.iterrows():
-                    key = f"conf_{row['NOME']}"
-                    st.checkbox(f"{row['Nº']} - {row['GRADUAÇÃO']} {row['NOME']}", key=key)
+                    # CHAVE ÚNICA: Nº + NOME para evitar erro de elementos duplicados
+                    key_conferência = f"conf_{row['Nº']}_{row['NOME']}"
+                    st.checkbox(f"{row['Nº']} - {row['GRADUAÇÃO']} {row['NOME']}", key=key_conferência)
                 
                 if st.button("Fechar Conferência"):
                     st.session_state.conferencia_ativa = False
                     st.rerun()
             st.divider()
 
-        # --- EXIBIÇÃO DA LISTA ---
         if len(dados_p) > 1:
             st.subheader(f"Pessoas Presentes ({len(df)})")
             if st.button("🔄 ATUALIZAR LISTA", use_container_width=True): st.rerun()
@@ -162,28 +175,29 @@ try:
             html_tabela = f'<div class="tabela-responsiva">{df.to_html(index=False, justify="center", border=0)}</div>'
             st.write(html_tabela, unsafe_allow_html=True)
             
-            # (Botões de PDF e WhatsApp seguem aqui conforme código anterior...)
             col_pdf, col_wpp = st.columns(2)
             with col_pdf:
                 pdf = FPDF()
-                pdf.add_page(); pdf.set_font("Arial", "B", 14)
+                pdf.add_page()
+                pdf.set_font("Arial", "B", 14)
                 pdf.cell(190, 10, "LISTA DE PRESENÇA - ROTA NOVA IGUAÇU", ln=True, align="C")
                 pdf.set_font("Arial", "B", 8)
                 w = [12, 30, 20, 25, 63, 40]
                 headers = ["Nº", "DATA_HORA", "ORIGEM", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
                 for i, h in enumerate(headers): pdf.cell(w[i], 8, h, border=1, align="C")
-                pdf.ln(); pdf.set_font("Arial", "", 8)
+                pdf.ln()
+                pdf.set_font("Arial", "", 8)
                 for _, r in df.iterrows():
                     for i in range(len(headers)): pdf.cell(w[i], 8, str(r[i]), border=1)
                     pdf.ln()
-                st.download_button("📄 PDF", pdf.output(dest="S").encode("latin-1"), "lista.pdf", "application/pdf", use_container_width=True)
+                st.download_button("📄 BAIXAR PDF", pdf.output(dest="S").encode("latin-1"), f"lista_{datetime.now().strftime('%Hh%M')}.pdf", "application/pdf", use_container_width=True)
             
             with col_wpp:
                 agora_f = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y às %H:%M')
-                texto_wpp = f"*🚌 LISTA DE PRESENÇA*\n"
-                for _, r in df.iterrows(): texto_wpp += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']}\n"
+                texto_wpp = f"*🚌 LISTA DE PRESENÇA - ROTA NOVA IGUAÇU*\n_Atualizada em {agora_f}_\n\n"
+                for _, r in df.iterrows(): texto_wpp += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']} ({r['LOTAÇÃO']})\n"
                 link_wpp = f"https://wa.me/?text={urllib.parse.quote(texto_wpp)}"
-                st.markdown(f'<a href="{link_wpp}" target="_blank"><button style="width:100%; height:38px; background-color:#25D366; color:white; border:none; border-radius:4px; font-weight:bold;">🟢 WHATSAPP</button></a>', unsafe_allow_html=True)
+                st.markdown(f'<a href="{link_wpp}" target="_blank"><button style="width:100%; height:38px; background-color:#25D366; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold; width:100%;">🟢 ENVIAR WHATSAPP</button></a>', unsafe_allow_html=True)
 
             if ja and st.button("❌ EXCLUIR MINHA ASSINATURA", use_container_width=True):
                 for idx, r in enumerate(dados_p):
