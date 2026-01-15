@@ -14,47 +14,57 @@ import re
 # ==========================================================
 # CONFIGURAÇÃO DE ACESSO
 # ==========================================================
-scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+scope = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
 
 SPREADSHEET_NAME = "ListaPresenca"
 WS_USUARIOS = "Usuarios"
 WS_CONFIG = "Config"
+
 FUSO_BR = pytz.timezone("America/Sao_Paulo")
 
 
 # ==========================================================
-# TELEFONE (MÁSCARA)
+# TELEFONE:
 # ==========================================================
 def tel_only_digits(s: str) -> str:
     return re.sub(r"\D+", "", str(s or ""))
 
-def tel_format_br(s: str) -> str:
+def tel_format_br(digits: str) -> str:
     """
     Formata 11 dígitos como: (xx) xxxxx.xxxx
     Se tiver menos, retorna o que der sem quebrar.
     """
-    d = tel_only_digits(s)
-    if len(d) <= 2:
+    d = tel_only_digits(digits)
+    if len(d) >= 2:
+        ddd = d[:2]
+        rest = d[2:]
+    else:
         return d
 
-    ddd = d[:2]
-    rest = d[2:]
     if len(rest) >= 9:
-        return f"({ddd}) {rest[:5]}.{rest[5:9]}"
-    if len(rest) > 5:
-        return f"({ddd}) {rest[:5]}.{rest[5:]}"
-    return f"({ddd}) {rest}"
+        p1 = rest[:5]
+        p2 = rest[5:9]
+        return f"({ddd}) {p1}.{p2}"
+    elif len(rest) > 5:
+        p1 = rest[:5]
+        p2 = rest[5:]
+        return f"({ddd}) {p1}.{p2}"
+    else:
+        return f"({ddd}) {rest}"
 
 def tel_is_valid_11(s: str) -> bool:
     return len(tel_only_digits(s)) == 11
 
 
 # ==========================================================
-# GOOGLE SHEETS - RETRY / BACKOFF (429 / 5xx)
+# WRAPPER COM RETRY / BACKOFF PARA 429
 # ==========================================================
 def gs_call(func, *args, **kwargs):
     max_tries = 6
-    base = 0.7
+    base = 0.6
     for attempt in range(max_tries):
         try:
             return func(*args, **kwargs)
@@ -63,7 +73,7 @@ def gs_call(func, *args, **kwargs):
             is_429 = ("429" in msg) or ("Quota exceeded" in msg) or ("RESOURCE_EXHAUSTED" in msg)
             is_5xx = any(code in msg for code in ["500", "502", "503", "504"])
             if is_429 or is_5xx:
-                sleep_s = (base * (2 ** attempt)) + random.uniform(0.0, 0.4)
+                sleep_s = (base * (2 ** attempt)) + random.uniform(0.0, 0.35)
                 time_module.sleep(min(sleep_s, 6.0))
                 continue
             raise
@@ -71,7 +81,7 @@ def gs_call(func, *args, **kwargs):
 
 
 # ==========================================================
-# CONEXÕES (REUSO - DIMINUI LEITURAS)
+# CONEXÕES (CACHE_RESOURCE)
 # ==========================================================
 @st.cache_resource
 def conectar_gsheets():
@@ -80,75 +90,78 @@ def conectar_gsheets():
     return gspread.authorize(creds)
 
 @st.cache_resource
-def abrir_doc():
+def abrir_documento():
     client = conectar_gsheets()
     return gs_call(client.open, SPREADSHEET_NAME)
 
 @st.cache_resource
-def sheet_presenca():
-    doc = abrir_doc()
-    return doc.sheet1
-
-@st.cache_resource
-def sheet_usuarios():
-    doc = abrir_doc()
+def ws_usuarios():
+    doc = abrir_documento()
     return gs_call(doc.worksheet, WS_USUARIOS)
 
 @st.cache_resource
-def sheet_config():
-    doc = abrir_doc()
+def ws_presenca():
+    doc = abrir_documento()
+    return doc.sheet1
+
+@st.cache_resource
+def ws_config():
+    doc = abrir_documento()
     try:
         return gs_call(doc.worksheet, WS_CONFIG)
     except Exception:
-        c = gs_call(doc.add_worksheet, title=WS_CONFIG, rows="10", cols="5")
-        gs_call(c.update, "A1:A2", [["LIMITE"], ["100"]])
-        return c
+        sheet_c = gs_call(doc.add_worksheet, title=WS_CONFIG, rows="10", cols="5")
+        gs_call(sheet_c.update, "A1:A2", [["LIMITE"], ["100"]])
+        return sheet_c
 
 
 # ==========================================================
-# LEITURAS (CACHE) - AJUSTADAS PARA NÃO ESTOURAR QUOTA
+# LEITURAS (CACHE_DATA)
 # ==========================================================
-@st.cache_data(ttl=20)
-def buscar_usuarios_publico():
+@st.cache_data(ttl=30)
+def buscar_usuarios_cadastrados():
+    """Uso geral (Login/Cadastro/Recuperar)."""
     try:
-        su = sheet_usuarios()
-        return gs_call(su.get_all_records)
+        sheet_u = ws_usuarios()
+        return gs_call(sheet_u.get_all_records)
     except Exception:
         return []
 
 @st.cache_data(ttl=3)
 def buscar_usuarios_admin():
+    """Uso específico do ADM: mais fresco."""
     try:
-        su = sheet_usuarios()
-        return gs_call(su.get_all_records)
+        sheet_u = ws_usuarios()
+        return gs_call(sheet_u.get_all_records)
     except Exception:
         return []
 
 @st.cache_data(ttl=120)
 def buscar_limite_dinamico():
     try:
-        sc = sheet_config()
-        v = gs_call(sc.acell, "A2").value
-        return int(v)
+        sheet_c = ws_config()
+        val = gs_call(sheet_c.acell, "A2").value
+        return int(val)
     except Exception:
         return 100
 
 @st.cache_data(ttl=6)
 def buscar_presenca_atualizada():
     try:
-        sp = sheet_presenca()
-        return gs_call(sp.get_all_values)
+        sheet_p = ws_presenca()
+        return gs_call(sheet_p.get_all_values)
     except Exception:
         return None
 
 
 # ==========================================================
-# FILTRO PARA NÃO MOSTRAR “SOBRAS” / LINHAS INVÁLIDAS
+# FILTRO PARA NÃO EXIBIR LINHAS “LIXO” (evita final estranho)
 # ==========================================================
 def filtrar_linhas_presenca(dados_p):
     """
-    Evita exibir lixo no final: remove linhas vazias/incompletas (para exibição/ordenação/conferência).
-    Exige: DATA, NOME e EMAIL preenchidos.
+    Mantém somente linhas válidas para exibição/ordenação/conferência:
+    - pelo menos 6 colunas (DATA, ORIGEM, GRAD, NOME, LOTAÇÃO, EMAIL)
+    - DATA, NOME e EMAIL preenchidos
     """
     if not dados_p or len(dados_p) < 2:
         return dados_p
@@ -159,22 +172,21 @@ def filtrar_linhas_presenca(dados_p):
     def norm(x):
         return str(x).strip() if x is not None else ""
 
-    out = []
+    body_ok = []
     for row in body:
         r = list(row) + [""] * (6 - len(row))
         r = r[:6]
+
         data_hora = norm(r[0])
         nome = norm(r[3])
         email = norm(r[5])
+
         if data_hora and nome and email:
-            out.append(r)
+            body_ok.append(r)
 
-    return [header] + out
+    return [header] + body_ok
 
 
-# ==========================================================
-# LÓGICA DE HORÁRIO + LIMPEZA DE CICLO
-# ==========================================================
 def verificar_status_e_limpar(sheet_p, dados_p):
     agora = datetime.now(FUSO_BR)
     hora_atual, dia_semana = agora.time(), agora.weekday()
@@ -193,7 +205,7 @@ def verificar_status_e_limpar(sheet_p, dados_p):
             if ultima_dt < marco:
                 gs_call(sheet_p.resize, rows=1)
                 gs_call(sheet_p.resize, rows=100)
-                st.cache_data.clear()
+                st.session_state["_force_refresh_presenca"] = True
                 st.rerun()
         except Exception:
             pass
@@ -206,9 +218,6 @@ def verificar_status_e_limpar(sheet_p, dados_p):
     return is_aberto, janela_conferencia
 
 
-# ==========================================================
-# ORDENAÇÃO
-# ==========================================================
 def aplicar_ordenacao(df):
     if "EMAIL" not in df.columns:
         df["EMAIL"] = "N/A"
@@ -238,7 +247,7 @@ def aplicar_ordenacao(df):
 
 
 # ==========================================================
-# PDF “MAIS APRESENTADO” (SEM UNICODE PROBLEMÁTICO)
+# PDF “mais apresentado” (SEM UNICODE)
 # ==========================================================
 class PDFRelatorio(FPDF):
     def __init__(self, titulo="LISTA DE PRESENÇA", sub=None):
@@ -265,29 +274,31 @@ class PDFRelatorio(FPDF):
         self.set_y(-12)
         self.set_font("Arial", "", 8)
         self.set_text_color(90, 90, 90)
-        # Sem "•" (unicode). Mantém latin-1 ok:
-        self.cell(0, 6, f"Pagina {self.page_no()}/{{nb}} - Rota Nova Iguacu", align="C")
+        # Sem "•" (unicode) para evitar latin-1 error
+        self.cell(0, 6, f"Página {self.page_no()}/{{nb}} - Rota Nova Iguaçu", align="C")
 
 
-def gerar_pdf_apresentado(df_o: pd.DataFrame, inscritos: int, vagas: int = 38) -> bytes:
+def gerar_pdf_apresentado(df_o: pd.DataFrame, resumo: dict) -> bytes:
     agora = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
     sub = f"Emitido em: {agora}"
 
-    pdf = PDFRelatorio(titulo="ROTA NOVA IGUACU - LISTA DE PRESENCA", sub=sub)
+    pdf = PDFRelatorio(titulo="ROTA NOVA IGUAÇU - LISTA DE PRESENÇA", sub=sub)
     pdf.add_page()
 
     pdf.set_font("Arial", "B", 10)
     pdf.set_fill_color(240, 240, 240)
     pdf.cell(0, 8, "RESUMO", ln=True, fill=True)
 
-    sobra = max(0, vagas - inscritos)
-    exc = max(0, inscritos - vagas)
-
     pdf.set_font("Arial", "", 9)
-    pdf.cell(0, 6, f"Inscritos: {inscritos} | Vagas: {vagas} | Sobra: {sobra} | Excedentes: {exc}", ln=True)
+    insc = resumo.get("inscritos", 0)
+    vagas = resumo.get("vagas", 38)
+    exc = max(0, insc - vagas)
+    sobra = max(0, vagas - insc)
+
+    pdf.cell(0, 6, f"Inscritos: {insc} | Vagas: {vagas} | Sobra: {sobra} | Excedentes: {exc}", ln=True)
     pdf.ln(2)
 
-    headers = ["Nº", "GRADUACAO", "NOME", "LOTACAO"]
+    headers = ["Nº", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
     col_w = [14, 28, 88, 60]
 
     pdf.set_font("Arial", "B", 9)
@@ -305,7 +316,10 @@ def gerar_pdf_apresentado(df_o: pd.DataFrame, inscritos: int, vagas: int = 38) -
         if is_exc:
             pdf.set_fill_color(255, 235, 238)
         else:
-            pdf.set_fill_color(245, 245, 245) if idx % 2 == 0 else pdf.set_fill_color(255, 255, 255)
+            if idx % 2 == 0:
+                pdf.set_fill_color(245, 245, 245)
+            else:
+                pdf.set_fill_color(255, 255, 255)
 
         pdf.cell(col_w[0], 6, str(r.get("Nº", "")), border=0, fill=True)
         pdf.cell(col_w[1], 6, str(r.get("GRADUAÇÃO", "")), border=0, fill=True)
@@ -316,14 +330,14 @@ def gerar_pdf_apresentado(df_o: pd.DataFrame, inscritos: int, vagas: int = 38) -
     pdf.ln(4)
     pdf.set_font("Arial", "I", 8)
     pdf.set_text_color(80, 80, 80)
-    pdf.multi_cell(0, 5, "Obs.: itens 'Exc-xx' sao excedentes alem do limite de 38 vagas.")
+    pdf.multi_cell(0, 5, "Observação: os itens marcados como 'Exc-xx' representam excedentes além do limite de 38 vagas.")
     pdf.set_text_color(0, 0, 0)
 
     return pdf.output(dest="S").encode("latin-1")
 
 
 # ==========================================================
-# INTERFACE (ESTILO DO SCRIPT INICIAL)
+# INTERFACE
 # ==========================================================
 st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered")
 st.markdown('<script src="https://telegram.org/js/telegram-web-app.js"></script>', unsafe_allow_html=True)
@@ -348,49 +362,53 @@ if "is_admin" not in st.session_state:
     st.session_state.is_admin = False
 if "conf_ativa" not in st.session_state:
     st.session_state.conf_ativa = False
+if "_force_refresh_presenca" not in st.session_state:
+    st.session_state._force_refresh_presenca = False
+if "_adm_first_load" not in st.session_state:
+    st.session_state._adm_first_load = False
 if "_tel_login_fmt" not in st.session_state:
     st.session_state._tel_login_fmt = ""
 if "_tel_cad_fmt" not in st.session_state:
     st.session_state._tel_cad_fmt = ""
-if "_adm_force_refresh" not in st.session_state:
-    st.session_state._adm_force_refresh = False
 
 
 try:
-    # Abre “escrita” uma vez (reuso) — reduz chamadas
-    sheet_p_escrita = sheet_presenca()
-    sheet_u_escrita = sheet_usuarios()
-
-    # Leituras iniciais (cache)
-    records_u = buscar_usuarios_publico()
+    # Leitura leve pro público
+    records_u_public = buscar_usuarios_cadastrados()
     limite_max = buscar_limite_dinamico()
+    sheet_u_escrita = ws_usuarios()
 
-    # ======================================================
-    # TELA NÃO LOGADA
-    # ======================================================
+    # =========================================
+    # LOGIN / CADASTRO / INSTRUÇÕES / RECUPERAR / ADM
+    # =========================================
     if st.session_state.usuario_logado is None and not st.session_state.is_admin:
         t1, t2, t3, t4, t5 = st.tabs(["Login", "Cadastro", "Instruções", "Recuperar", "ADM"])
 
         with t1:
             with st.form("form_login"):
                 l_e = st.text_input("E-mail:")
+
                 raw_tel_login = st.text_input("Telefone:", value=st.session_state._tel_login_fmt)
                 fmt_tel_login = tel_format_br(raw_tel_login)
                 st.session_state._tel_login_fmt = fmt_tel_login
+
                 l_s = st.text_input("Senha:", type="password")
 
-                if st.form_submit_button("ENTRAR", use_container_width=True):
+                entrou = st.form_submit_button("ENTRAR", use_container_width=True)
+                if entrou:
                     if not tel_is_valid_11(fmt_tel_login):
                         st.error("Telefone inválido. Use DDD + 9 dígitos (ex: (21) 98765.4321).")
                     else:
                         tel_login_digits = tel_only_digits(fmt_tel_login)
+
                         u_a = next(
-                            (u for u in records_u
+                            (u for u in records_u_public
                              if str(u.get("Email", "")).strip().lower() == l_e.strip().lower()
                              and str(u.get("Senha", "")) == str(l_s)
                              and tel_only_digits(u.get("TELEFONE", "")) == tel_login_digits),
                             None
                         )
+
                         if u_a:
                             status_user = str(u_a.get("STATUS", "")).strip().upper()
                             if status_user == "ATIVO":
@@ -402,7 +420,7 @@ try:
                             st.error("Dados incorretos.")
 
         with t2:
-            if len(records_u) >= limite_max:
+            if len(records_u_public) >= limite_max:
                 st.warning(f"⚠️ Limite de {limite_max} usuários atingido.")
             else:
                 with st.form("form_novo_cadastro"):
@@ -413,21 +431,23 @@ try:
                     fmt_tel_cad = tel_format_br(raw_tel_cad)
                     st.session_state._tel_cad_fmt = fmt_tel_cad
 
-                    n_g = st.selectbox("Graduação:", ["TCEL", "MAJ", "CAP", "1º TEN", "2º TEN", "SUBTEN",
-                                                      "1º SGT", "2º SGT", "3º SGT", "CB", "SD", "FC COM", "FC TER"])
+                    n_g = st.selectbox("Graduação:", ["TCEL", "MAJ", "CAP", "1º TEN", "2º TEN", "SUBTEN", "1º SGT",
+                                                      "2º SGT", "3º SGT", "CB", "SD", "FC COM", "FC TER"])
                     n_l = st.text_input("Lotação:")
                     n_o = st.selectbox("Origem:", ["QG", "RMCF", "OUTROS"])
                     n_p = st.text_input("Senha:", type="password")
 
-                    if st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True):
+                    cadastrou = st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True)
+                    if cadastrou:
                         if not tel_is_valid_11(fmt_tel_cad):
                             st.error("Telefone inválido. Use DDD + 9 dígitos (ex: (21) 98765.4321).")
-                        elif any(str(u.get("Email", "")).strip().lower() == n_e.strip().lower() for u in records_u):
+                        elif any(str(u.get("Email", "")).strip().lower() == n_e.strip().lower() for u in records_u_public):
                             st.error("E-mail já cadastrado.")
                         else:
-                            gs_call(sheet_u_escrita.append_row, [n_n, n_g, n_l, n_p, n_o, n_e, fmt_tel_cad, "PENDENTE"])
-                            # limpa caches para refletir rápido sem estourar quota
-                            buscar_usuarios_publico.clear()
+                            gs_call(sheet_u_escrita.append_row, [
+                                n_n, n_g, n_l, n_p, n_o, n_e, fmt_tel_cad, "PENDENTE"
+                            ])
+                            buscar_usuarios_cadastrados.clear()
                             buscar_usuarios_admin.clear()
                             st.success("Cadastro realizado! Aguardando aprovação do Administrador.")
                             st.rerun()
@@ -447,7 +467,7 @@ try:
             * **Manhã:** Inscrições abertas até às 05:00h. Reabre às 07:00h.
             * **Tarde:** Inscrições abertas até às 17:00h. Reabre às 19:00h.
             * **Finais de Semana:** Abrem domingo às 19:00h.
-
+            
             **2. Observação:**
             * Nos períodos em que a lista ficar suspensa para conferência (05:00h às 07:00h / 17:00h às 19:00h), os três PPMM que estiverem no topo da lista terão acesso à lista de check up (botão no topo da lista) para tirar a falta de quem estará entrando no ônibus.
             * Após o horário de 06:50h e de 18:50h, a lista será automaticamente zerada para que o novo ciclo da lista possa ocorrer.
@@ -455,8 +475,9 @@ try:
 
         with t4:
             e_r = st.text_input("E-mail cadastrado:")
-            if st.button("RECUPERAR DADOS", use_container_width=True):
-                u_r = next((u for u in records_u if str(u.get("Email", "")).strip().lower() == e_r.strip().lower()), None)
+            rec_btn = st.button("RECUPERAR DADOS", use_container_width=True)
+            if rec_btn:
+                u_r = next((u for u in records_u_public if str(u.get("Email", "")).strip().lower() == e_r.strip().lower()), None)
                 if u_r:
                     st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')} | Tel: {u_r.get('TELEFONE')}")
                 else:
@@ -466,34 +487,37 @@ try:
             with st.form("form_admin"):
                 ad_u = st.text_input("Usuário ADM:")
                 ad_s = st.text_input("Senha ADM:", type="password")
-                if st.form_submit_button("ACESSAR PAINEL"):
+                entrou_adm = st.form_submit_button("ACESSAR PAINEL")
+                if entrou_adm:
                     if ad_u == "Administrador" and ad_s == "Administrador@123":
                         st.session_state.is_admin = True
-                        st.session_state._adm_force_refresh = True  # força ler fresco ao entrar
+                        st.session_state._adm_first_load = True
                         st.rerun()
                     else:
                         st.error("ADM inválido.")
 
-    # ======================================================
+    # =========================================
     # PAINEL ADM
-    # ======================================================
+    # =========================================
     elif st.session_state.is_admin:
         st.header("🛡️ PAINEL ADMINISTRATIVO")
 
-        if st.button("⬅️ SAIR DO PAINEL"):
+        sair_btn = st.button("⬅️ SAIR DO PAINEL")
+        if sair_btn:
             st.session_state.is_admin = False
-            st.session_state._adm_force_refresh = False
+            st.session_state._adm_first_load = False
             st.rerun()
 
-        if st.session_state._adm_force_refresh:
+        if st.session_state._adm_first_load:
             buscar_usuarios_admin.clear()
-            st.session_state._adm_force_refresh = False
+            st.session_state._adm_first_load = False
 
-        records_u_adm = buscar_usuarios_admin()
+        records_u = buscar_usuarios_admin()
 
         cA, cB = st.columns([1, 1])
         with cA:
-            if st.button("🔄 Atualizar usuários", use_container_width=True):
+            att_btn = st.button("🔄 Atualizar usuários", use_container_width=True)
+            if att_btn:
                 buscar_usuarios_admin.clear()
                 st.rerun()
         with cB:
@@ -501,9 +525,10 @@ try:
 
         st.subheader("⚙️ Configurações Globais")
         novo_limite = st.number_input("Limite máximo de usuários:", value=int(limite_max))
-        if st.button("💾 SALVAR NOVO LIMITE"):
-            sc = sheet_config()
-            gs_call(sc.update, "A2", [[str(novo_limite)]])
+        salvar_lim = st.button("💾 SALVAR NOVO LIMITE")
+        if salvar_lim:
+            sheet_c = ws_config()
+            gs_call(sheet_c.update, "A2", [[str(novo_limite)]])
             st.success("Limite atualizado!")
             st.rerun()
 
@@ -511,18 +536,19 @@ try:
         st.subheader("👥 Gestão de Usuários")
         busca = st.text_input("🔍 Pesquisar por Nome ou E-mail:").strip().lower()
 
-        if st.button("✅ ATIVAR TODOS E DESLOGAR", use_container_width=True):
-            if records_u_adm:
+        ativar_all = st.button("✅ ATIVAR TODOS E DESLOGAR", use_container_width=True)
+        if ativar_all:
+            if records_u:
                 start = 2
-                end = len(records_u_adm) + 1
+                end = len(records_u) + 1
                 rng = f"H{start}:H{end}"
-                gs_call(sheet_u_escrita.update, rng, [["ATIVO"]] * len(records_u_adm))
+                gs_call(sheet_u_escrita.update, rng, [["ATIVO"]] * len(records_u))
                 buscar_usuarios_admin.clear()
-                buscar_usuarios_publico.clear()
+                buscar_usuarios_cadastrados.clear()
                 st.session_state.clear()
                 st.rerun()
 
-        for i, user in enumerate(records_u_adm):
+        for i, user in enumerate(records_u):
             if busca == "" or busca in str(user.get("Nome", "")).lower() or busca in str(user.get("Email", "")).lower():
                 status = str(user.get("STATUS", "")).upper()
                 with st.expander(f"{user.get('Graduação')} {user.get('Nome')} - {status}"):
@@ -534,29 +560,39 @@ try:
                     if new_val != is_ativo:
                         gs_call(sheet_u_escrita.update_cell, i + 2, 8, "ATIVO" if new_val else "INATIVO")
                         buscar_usuarios_admin.clear()
-                        buscar_usuarios_publico.clear()
+                        buscar_usuarios_cadastrados.clear()
                         st.rerun()
 
-                    if c3.button("🗑️", key=f"del_{i}"):
+                    del_btn = c3.button("🗑️", key=f"del_{i}")
+                    if del_btn:
                         gs_call(sheet_u_escrita.delete_rows, i + 2)
                         buscar_usuarios_admin.clear()
-                        buscar_usuarios_publico.clear()
+                        buscar_usuarios_cadastrados.clear()
                         st.rerun()
 
-    # ======================================================
+    # =========================================
     # USUÁRIO LOGADO
-    # ======================================================
+    # =========================================
     else:
         u = st.session_state.usuario_logado
 
         st.sidebar.markdown("### 👤 Usuário Conectado")
         st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
-        if st.sidebar.button("Sair", use_container_width=True):
+
+        sair_user = st.sidebar.button("Sair", use_container_width=True)
+        if sair_user:
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
+
         st.sidebar.markdown("---")
         st.sidebar.caption("Desenvolvido por: MAJ ANDRÉ AGUIAR - CAES")
+
+        sheet_p_escrita = ws_presenca()
+
+        if st.session_state._force_refresh_presenca:
+            buscar_presenca_atualizada.clear()
+            st.session_state._force_refresh_presenca = False
 
         dados_p = buscar_presenca_atualizada()
         dados_p_show = filtrar_linhas_presenca(dados_p)
@@ -575,7 +611,8 @@ try:
 
         if ja:
             st.success(f"✅ Presença registrada: {pos}º")
-            if st.button("❌ EXCLUIR MINHA ASSINATURA", use_container_width=True):
+            exc_btn = st.button("❌ EXCLUIR MINHA ASSINATURA", use_container_width=True)
+            if exc_btn:
                 email_logado = str(u.get("Email")).strip().lower()
                 if dados_p and len(dados_p) > 1:
                     for idx, r in enumerate(dados_p):
@@ -585,7 +622,8 @@ try:
                             st.rerun()
 
         elif aberto:
-            if st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True):
+            salvar_btn = st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True)
+            if salvar_btn:
                 agora = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
                 gs_call(sheet_p_escrita.append_row, [
                     agora,
@@ -600,26 +638,35 @@ try:
         else:
             st.info("⌛ Lista fechada para novas inscrições.")
 
-        # CONFERÊNCIA (SEM "None" NA TELA)
+        # CONFERÊNCIA (aqui é o ponto que gerava "None")
         if ja and pos <= 3 and janela_conf:
             st.divider()
             st.subheader("📋 CONFERÊNCIA")
-            if st.button("📝 PAINEL", use_container_width=True):
+            painel_btn = st.button("📝 PAINEL", use_container_width=True)
+            if painel_btn:
                 st.session_state.conf_ativa = not st.session_state.conf_ativa
 
             if st.session_state.conf_ativa and (dados_p_show and len(dados_p_show) > 1):
-                # Importante: estilo do script inicial (chamada direta). Não gera “None”.
+                # AQUI: captura retorno do widget SEMPRE, pra não renderizar "None"
                 for i, row in df_o.iterrows():
-                    st.checkbox(f"{row['Nº']} - {row.get('NOME')}", key=f"chk_p_{i}")
+                    label = f"{row.get('Nº','')} - {row.get('NOME','')}".strip()
+                    if label.endswith("-"):
+                        label = label[:-1].strip()
+                    _ = st.checkbox(label if label else " ", key=f"chk_p_{i}")
 
         if dados_p_show and len(dados_p_show) > 1:
             insc = len(df_o)
             rest = 38 - insc
             st.subheader(f"Inscritos: {insc} | Vagas: 38 | {'Sobra' if rest >= 0 else 'Exc'}: {abs(rest)}")
 
-            if st.button("🔄 ATUALIZAR", use_container_width=True):
-                buscar_presenca_atualizada.clear()
-                st.rerun()
+            c_up1, c_up2 = st.columns([1, 1])
+            with c_up1:
+                up_btn = st.button("🔄 ATUALIZAR", use_container_width=True)
+                if up_btn:
+                    buscar_presenca_atualizada.clear()
+                    st.rerun()
+            with c_up2:
+                st.caption("Atualiza sob demanda.")
 
             st.write(
                 f"<div class='tabela-responsiva'>{df_v.drop(columns=['EMAIL']).to_html(index=False, justify='center', border=0, escape=False)}</div>",
@@ -628,13 +675,21 @@ try:
 
             c1, c2 = st.columns(2)
             with c1:
-                pdf_bytes = gerar_pdf_apresentado(df_o, inscritos=insc, vagas=38)
-                st.download_button("📄 PDF (relatório)", pdf_bytes, "lista_rota_nova_iguacu.pdf", use_container_width=True)
+                resumo = {"inscritos": insc, "vagas": 38}
+                pdf_bytes = gerar_pdf_apresentado(df_o, resumo)
+                # Captura retorno do download_button também (blindagem total)
+                _ = st.download_button(
+                    "📄 PDF (relatório)",
+                    pdf_bytes,
+                    "lista_rota_nova_iguacu.pdf",
+                    use_container_width=True
+                )
 
             with c2:
                 txt_w = "*🚌 LISTA DE PRESENÇA*\n\n"
                 for _, r in df_o.iterrows():
                     txt_w += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']}\n"
+
                 st.markdown(
                     f'<a href="https://wa.me/?text={urllib.parse.quote(txt_w)}" target="_blank">'
                     f"<button style='width:100%; height:38px; background-color:#25D366; color:white; border:none; "
@@ -642,7 +697,7 @@ try:
                     unsafe_allow_html=True
                 )
 
-    st.markdown('<div class="footer">Desenvolvido por: <b>MAJ ANDRÉ AGUIAR - CAES</b></div>', unsafe_allow_html=True)
+    st.markdown('<div class="footer">Desenvolvido por:       <b>MAJ ANDRÉ AGUIAR - CAES</b></div>', unsafe_allow_html=True)
 
 except Exception as e:
     st.error(f"⚠️ Erro: {e}")
