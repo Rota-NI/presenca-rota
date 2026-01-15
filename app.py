@@ -481,7 +481,7 @@ try:
             * **Manhã:** Inscrições abertas até às 05:00h. Reabre às 07:00h.
             * **Tarde:** Inscrições abertas até às 17:00h. Reabre às 19:00h.
             * **Finais de Semana:** Abrem domingo às 19:00h.
-            
+
             **2. Observação:**
             * Nos períodos em que a lista ficar suspensa para conferência (05:00h às 07:00h / 17:00h às 19:00h), os três PPMM que estiverem no topo da lista terão acesso à lista de check up (botão no topo da lista) para tirar a falta de quem estará entrando no ônibus.
             * Após o horário de 06:50h e de 18:50h, a lista será automaticamente zerada para que o novo ciclo da lista possa ocorrer.
@@ -639,9 +639,24 @@ try:
             salvar_btn = st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True)
             if salvar_btn:
                 agora = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
+
+                # ==========================================================
+                # ✅ ÚNICA CORREÇÃO PEDIDA:
+                # Gravar a origem usando o campo do Google Sheets: QG_RMCF_OUTROS
+                # (com tolerância caso o header esteja abreviado como "QG_RMCF_OUT")
+                # ==========================================================
+                origem_val = (
+                    (u.get("QG_RMCF_OUTROS") if isinstance(u, dict) else None) or
+                    (u.get("QG_RMCF_OUT") if isinstance(u, dict) else None) or
+                    ""
+                )
+                origem_val = str(origem_val).strip().upper()
+                if origem_val not in ("QG", "RMCF", "OUTROS"):
+                    origem_val = "QG"
+
                 gs_call(sheet_p_escrita.append_row, [
                     agora,
-                    u.get("ORIGEM") or "QG",
+                    origem_val,
                     u.get("Graduação"),
                     u.get("Nome"),
                     u.get("Lotação"),
