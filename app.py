@@ -110,7 +110,6 @@ def ws_config():
     try:
         return gs_call(doc.worksheet, WS_CONFIG)
     except Exception:
-        # CORREÇÃO DA LINHA 113: Parêntese fechado corretamente
         sheet_c = gs_call(doc.add_worksheet, title=WS_CONFIG, rows="10", cols="5")
         gs_call(sheet_c.update, "A1:A2", [["LIMITE"], ["100"]])
         return sheet_c
@@ -417,7 +416,6 @@ try:
                     buscar_usuarios_admin.clear(); st.rerun()
 
     else:
-        # USUÁRIO LOGADO - BARRA LATERAL RESTAURADA
         u = st.session_state.usuario_logado
         st.sidebar.markdown("### 👤 Usuário Conectado")
         st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
@@ -455,15 +453,21 @@ try:
                 gs_call(sheet_p_escrita.append_row, [agora, u.get("ORIGEM") or "QG", u.get("Graduação"), u.get("Nome"), u.get("Lotação"), u.get("Email")])
                 buscar_presenca_atualizada.clear(); st.rerun()
 
-        # CORREÇÃO DEFINITIVA DO ERRO NONE NA CONFERÊNCIA
+        # ==========================================================
+        # CONSERTO DEFINITIVO DO ERRO NONE
+        # ==========================================================
         if ja and pos <= 3 and jan_conf:
             st.divider(); st.subheader("📋 CONFERÊNCIA")
             if st.button("📝 PAINEL", use_container_width=True):
                 st.session_state.conf_ativa = not st.session_state.conf_ativa
+            
             if st.session_state.conf_ativa:
-                # O problema era o retorno visual do loop. Agora encapsulado silenciosamente.
-                for i, row in df_o.iterrows():
-                    st.checkbox(f"{row['Nº']} - {row.get('NOME')}", key=f"chk_p_{i}")
+                with st.container():
+                    # Usando loop for puro e atribuindo a checkbox a uma variável nula _
+                    # para que o Streamlit capture o componente e não imprima o objeto 'None'
+                    for i, row in df_o.iterrows():
+                        label_chk = f"{row['Nº']} - {row.get('NOME')}"
+                        _ = st.checkbox(label_chk, key=f"chk_p_{i}")
 
         if dados_p_f and len(dados_p_f) > 1:
             insc = len(df_o); rest = 38 - insc
@@ -475,7 +479,7 @@ try:
             c1, c2 = st.columns(2)
             with c1:
                 pdf_b = gerar_pdf_apresentado(df_o, {"inscritos": insc, "vagas": 38})
-                st.download_button("📄 PDF", pdf_b, "lista.pdf", use_container_width=True)
+                st.download_button("📄 PDF (relatório)", pdf_b, "lista.pdf", use_container_width=True)
             with c2:
                 txt_w = f"*🚌 LISTA DE PRESENÇA*\n\n"
                 for _, r in df_o.iterrows(): txt_w += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']}\n"
