@@ -343,8 +343,7 @@ try:
                     u_a = next((u for u in records_u_public if str(u.get("Email", "")).strip().lower() == l_e.strip().lower() and str(u.get("Senha", "")) == str(l_s) and tel_only_digits(u.get("TELEFONE", "")) == tel_login_digits), None)
                     if u_a:
                         if str(u_a.get("STATUS", "")).strip().upper() == "ATIVO":
-                            st.session_state.usuario_logado = u_a
-                            st.rerun()
+                            st.session_state.usuario_logado = u_a; st.rerun()
                         else: st.error("Aguardando aprovação do ADM.")
                     else: st.error("Dados incorretos.")
 
@@ -361,8 +360,7 @@ try:
                         if any(str(u.get("Email", "")).strip().lower() == n_e.strip().lower() for u in records_u_public): st.error("E-mail já cadastrado.")
                         else:
                             gs_call(sheet_u_escrita.append_row, [n_n, n_g, n_l, n_p, n_o, n_e, st.session_state._tel_cad_fmt, "PENDENTE"])
-                            buscar_usuarios_cadastrados.clear()
-                            st.success("Cadastro realizado!")
+                            buscar_usuarios_cadastrados.clear(); st.success("Cadastro realizado!")
 
         with t3:
             st.markdown("### 📖 Guia de Uso")
@@ -389,11 +387,11 @@ try:
             e_r = st.text_input("E-mail cadastrado:")
             if st.button("RECUPERAR DADOS", use_container_width=True):
                 u_r = next((u for u in records_u_public if str(u.get("Email", "")).strip().lower() == e_r.strip().lower()), None)
-                if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')} | Tel: {u_r.get('TELEFONE')}")
+                if u_r: st.info(f"Usuario: {u_r.get('Nome')} | Senha: {u_r.get('Senha')}")
 
         with t5:
             with st.form("form_admin"):
-                ad_u, ad_s = st.text_input("Usuário ADM:"), st.text_input("Senha ADM:", type="password")
+                ad_u, ad_s = st.text_input("Usuario ADM:"), st.text_input("Senha ADM:", type="password")
                 if st.form_submit_button("ACESSAR PAINEL"):
                     if ad_u == "Administrador" and ad_s == "Administrador@123":
                         st.session_state.is_admin = True; st.rerun()
@@ -450,24 +448,21 @@ try:
         elif aberto:
             if st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True):
                 agora = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
-                gs_call(sheet_p_escrita.append_row, [agora, u.get("ORIGEM") or "QG", u.get("Graduação"), u.get("Nome"), u.get("Lotação"), u.get("Email")])
+                gs_call(sheet_p_escrita.append_row, [agora, u.get("ORIGEM") or "QG", u.get("Graduação"), u.get("Nome"), u.get("Lotaation"), u.get("Email")])
                 buscar_presenca_atualizada.clear(); st.rerun()
 
         # ==========================================================
         # CONSERTO DEFINITIVO DO ERRO NONE
         # ==========================================================
-        if ja and pos <= 3 and jan_conf:
+        if ja and pos <= 3 and janela_conf:
             st.divider(); st.subheader("📋 CONFERÊNCIA")
             if st.button("📝 PAINEL", use_container_width=True):
                 st.session_state.conf_ativa = not st.session_state.conf_ativa
             
             if st.session_state.conf_ativa:
-                with st.container():
-                    # Usando loop for puro e atribuindo a checkbox a uma variável nula _
-                    # para que o Streamlit capture o componente e não imprima o objeto 'None'
-                    for i, row in df_o.iterrows():
-                        label_chk = f"{row['Nº']} - {row.get('NOME')}"
-                        _ = st.checkbox(label_chk, key=f"chk_p_{i}")
+                # Técnica de atribuição em massa via compreensão de lista
+                # Isso impede o Streamlit de imprimir o resultado de cada função checkbox.
+                _ = [st.checkbox(f"{r['Nº']} - {r['NOME']}", key=f"chk_p_{i}") for i, r in df_o.iterrows()]
 
         if dados_p_f and len(dados_p_f) > 1:
             insc = len(df_o); rest = 38 - insc
@@ -479,7 +474,7 @@ try:
             c1, c2 = st.columns(2)
             with c1:
                 pdf_b = gerar_pdf_apresentado(df_o, {"inscritos": insc, "vagas": 38})
-                st.download_button("📄 PDF (relatório)", pdf_b, "lista.pdf", use_container_width=True)
+                st.download_button("📄 PDF", pdf_b, "lista.pdf", use_container_width=True)
             with c2:
                 txt_w = f"*🚌 LISTA DE PRESENÇA*\n\n"
                 for _, r in df_o.iterrows(): txt_w += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']}\n"
