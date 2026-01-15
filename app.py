@@ -360,7 +360,8 @@ try:
                         if any(str(u.get("Email", "")).strip().lower() == n_e.strip().lower() for u in records_u_public): st.error("E-mail já cadastrado.")
                         else:
                             gs_call(sheet_u_escrita.append_row, [n_n, n_g, n_l, n_p, n_o, n_e, st.session_state._tel_cad_fmt, "PENDENTE"])
-                            buscar_usuarios_cadastrados.clear(); st.success("Cadastro realizado!")
+                            buscar_usuarios_cadastrados.clear()
+                            st.success("Cadastro realizado!")
 
         with t3:
             st.markdown("### 📖 Guia de Uso")
@@ -414,6 +415,7 @@ try:
                     buscar_usuarios_admin.clear(); st.rerun()
 
     else:
+        # USUÁRIO LOGADO - BARRA LATERAL PRESERVADA
         u = st.session_state.usuario_logado
         st.sidebar.markdown("### 👤 Usuário Conectado")
         st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
@@ -448,11 +450,11 @@ try:
         elif aberto:
             if st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True):
                 agora = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
-                gs_call(sheet_p_escrita.append_row, [agora, u.get("ORIGEM") or "QG", u.get("Graduação"), u.get("Nome"), u.get("Lotaation"), u.get("Email")])
+                gs_call(sheet_p_escrita.append_row, [agora, u.get("ORIGEM") or "QG", u.get("Graduação"), u.get("Nome"), u.get("Lotação"), u.get("Email")])
                 buscar_presenca_atualizada.clear(); st.rerun()
 
         # ==========================================================
-        # CONSERTO DEFINITIVO DO ERRO NONE
+        # SOLUÇÃO DEFINITIVA DO ERRO NONE
         # ==========================================================
         if ja and pos <= 3 and janela_conf:
             st.divider(); st.subheader("📋 CONFERÊNCIA")
@@ -460,9 +462,11 @@ try:
                 st.session_state.conf_ativa = not st.session_state.conf_ativa
             
             if st.session_state.conf_ativa:
-                # Técnica de atribuição em massa via compreensão de lista
-                # Isso impede o Streamlit de imprimir o resultado de cada função checkbox.
-                _ = [st.checkbox(f"{r['Nº']} - {r['NOME']}", key=f"chk_p_{i}") for i, r in df_o.iterrows()]
+                # Técnica infalível: Criar os componentes e imediatamente 'esquecer' o resultado
+                # Isso impede o Streamlit Magic de imprimir o objeto na tela.
+                for i, row in df_o.iterrows():
+                    res_chk = st.checkbox(f"{row['Nº']} - {row.get('NOME')}", key=f"chk_p_{i}")
+                    del res_chk # Deletar a variável limpa a memória visual do Magic
 
         if dados_p_f and len(dados_p_f) > 1:
             insc = len(df_o); rest = 38 - insc
