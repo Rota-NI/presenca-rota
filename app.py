@@ -222,6 +222,12 @@ def aplicar_ordenacao(df):
     if "EMAIL" not in df.columns:
         df["EMAIL"] = "N/A"
 
+    # garante a coluna ORIGEM para PDF (vem do QG_RMCF_OUTROS)
+    if "QG_RMCF_OUTROS" not in df.columns and "ORIGEM" in df.columns:
+        df["QG_RMCF_OUTROS"] = df["ORIGEM"]
+    if "QG_RMCF_OUTROS" not in df.columns:
+        df["QG_RMCF_OUTROS"] = ""
+
     p_orig = {"QG": 1, "RMCF": 2, "OUTROS": 3}
     p_grad = {
         "TCEL": 1, "MAJ": 2, "CAP": 3, "1º TEN": 4, "2º TEN": 5, "SUBTEN": 6,
@@ -247,7 +253,7 @@ def aplicar_ordenacao(df):
 
 
 # ==========================================================
-# PDF “mais apresentado” (SEM UNICODE)
+# PDF “mais apresentado” (AGORA COM ORIGEM À DIREITA)
 # ==========================================================
 class PDFRelatorio(FPDF):
     def __init__(self, titulo="LISTA DE PRESENÇA", sub=None):
@@ -274,7 +280,7 @@ class PDFRelatorio(FPDF):
         self.set_y(-12)
         self.set_font("Arial", "", 8)
         self.set_text_color(90, 90, 90)
-        # Sem "•" (unicode) para evitar latin-1 error
+        # Sem unicode problemático
         self.cell(0, 6, f"Página {self.page_no()}/{{nb}} - Rota Nova Iguaçu", align="C")
 
 
@@ -285,6 +291,7 @@ def gerar_pdf_apresentado(df_o: pd.DataFrame, resumo: dict) -> bytes:
     pdf = PDFRelatorio(titulo="ROTA NOVA IGUAÇU - LISTA DE PRESENÇA", sub=sub)
     pdf.add_page()
 
+    # Bloco resumo
     pdf.set_font("Arial", "B", 10)
     pdf.set_fill_color(240, 240, 240)
     pdf.cell(0, 8, "RESUMO", ln=True, fill=True)
@@ -298,12 +305,16 @@ def gerar_pdf_apresentado(df_o: pd.DataFrame, resumo: dict) -> bytes:
     pdf.cell(0, 6, f"Inscritos: {insc} | Vagas: {vagas} | Sobra: {sobra} | Excedentes: {exc}", ln=True)
     pdf.ln(2)
 
-    headers = ["Nº", "GRADUAÇÃO", "NOME", "LOTAÇÃO"]
-    col_w = [14, 28, 88, 60]
+    # Tabela com ORIGEM no final (direita)
+    headers = ["Nº", "GRADUAÇÃO", "NOME", "LOTAÇÃO", "ORIGEM"]
+
+    # Ajuste para caber em A4: soma ~190mm (margens ok)
+    col_w = [12, 26, 78, 55, 19]
 
     pdf.set_font("Arial", "B", 9)
     pdf.set_fill_color(30, 30, 30)
     pdf.set_text_color(255, 255, 255)
+
     for i, h in enumerate(headers):
         pdf.cell(col_w[i], 7, h, border=0, align="C", fill=True)
     pdf.ln()
@@ -321,10 +332,13 @@ def gerar_pdf_apresentado(df_o: pd.DataFrame, resumo: dict) -> bytes:
             else:
                 pdf.set_fill_color(255, 255, 255)
 
+        origem = str(r.get("QG_RMCF_OUTROS", "") or r.get("ORIGEM", "") or "").strip()
+
         pdf.cell(col_w[0], 6, str(r.get("Nº", "")), border=0, fill=True)
         pdf.cell(col_w[1], 6, str(r.get("GRADUAÇÃO", "")), border=0, fill=True)
-        pdf.cell(col_w[2], 6, str(r.get("NOME", ""))[:50], border=0, fill=True)
-        pdf.cell(col_w[3], 6, str(r.get("LOTAÇÃO", ""))[:42], border=0, fill=True)
+        pdf.cell(col_w[2], 6, str(r.get("NOME", ""))[:42], border=0, fill=True)
+        pdf.cell(col_w[3], 6, str(r.get("LOTAÇÃO", ""))[:34], border=0, fill=True)
+        pdf.cell(col_w[4], 6, origem[:10], border=0, align="C", fill=True)
         pdf.ln()
 
     pdf.ln(4)
@@ -521,7 +535,7 @@ try:
                 buscar_usuarios_admin.clear()
                 st.rerun()
         with cB:
-            st.caption("(TTL=3s).")
+            st.caption("ADM lê mais fresco (TTL=3s).")
 
         st.subheader("⚙️ Configurações Globais")
         novo_limite = st.number_input("Limite máximo de usuários:", value=int(limite_max))
@@ -638,7 +652,7 @@ try:
         else:
             st.info("⌛ Lista fechada para novas inscrições.")
 
-        # CONFERÊNCIA (aqui é o ponto que gerava "None")
+        # CONFERÊNCIA
         if ja and pos <= 3 and janela_conf:
             st.divider()
             st.subheader("📋 CONFERÊNCIA")
@@ -647,11 +661,8 @@ try:
                 st.session_state.conf_ativa = not st.session_state.conf_ativa
 
             if st.session_state.conf_ativa and (dados_p_show and len(dados_p_show) > 1):
-                # AQUI: captura retorno do widget SEMPRE, pra não renderizar "None"
                 for i, row in df_o.iterrows():
                     label = f"{row.get('Nº','')} - {row.get('NOME','')}".strip()
-                    if label.endswith("-"):
-                        label = label[:-1].strip()
                     _ = st.checkbox(label if label else " ", key=f"chk_p_{i}")
 
         if dados_p_show and len(dados_p_show) > 1:
@@ -677,7 +688,6 @@ try:
             with c1:
                 resumo = {"inscritos": insc, "vagas": 38}
                 pdf_bytes = gerar_pdf_apresentado(df_o, resumo)
-                # Captura retorno do download_button também (blindagem total)
                 _ = st.download_button(
                     "📄 PDF (relatório)",
                     pdf_bytes,
@@ -689,7 +699,6 @@ try:
                 txt_w = "*🚌 LISTA DE PRESENÇA*\n\n"
                 for _, r in df_o.iterrows():
                     txt_w += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']}\n"
-
                 st.markdown(
                     f'<a href="https://wa.me/?text={urllib.parse.quote(txt_w)}" target="_blank">'
                     f"<button style='width:100%; height:38px; background-color:#25D366; color:white; border:none; "
