@@ -162,7 +162,8 @@ def buscar_presenca_atualizada():
 
 
 # ==========================================================
-# CORREÇÃO: remover linhas vazias/incompletas que geram "None"
+# CORREÇÃO 1: remover linhas vazias/incompletas que geram itens inválidos
+# (usado apenas para exibição/ordenação/conferência)
 # ==========================================================
 def filtrar_linhas_presenca(dados_p):
     """
@@ -257,7 +258,7 @@ def aplicar_ordenacao(df):
 
 
 # ==========================================================
-# PDF “mais apresentado”
+# PDF “mais apresentado” + CORREÇÃO 2: remover caractere Unicode (•) que quebra latin-1
 # ==========================================================
 class PDFRelatorio(FPDF):
     def __init__(self, titulo="LISTA DE PRESENÇA", sub=None):
@@ -286,7 +287,8 @@ class PDFRelatorio(FPDF):
         self.set_y(-12)
         self.set_font("Arial", "", 8)
         self.set_text_color(90, 90, 90)
-        self.cell(0, 6, f"Página {self.page_no()}/{{nb}}  •  Rota Nova Iguaçu", align="C")
+        # Removido o "•" (Unicode). Usando "-" compatível com latin-1.
+        self.cell(0, 6, f"Página {self.page_no()}/{{nb}} - Rota Nova Iguaçu", align="C")
 
 def gerar_pdf_apresentado(df_o: pd.DataFrame, resumo: dict) -> bytes:
     agora = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
@@ -598,7 +600,7 @@ try:
 
         dados_p = buscar_presenca_atualizada()
 
-        # >>>>>>>>> CORREÇÃO AQUI: usa um "dados_p_filtrado" para exibição/conferência
+        # >>>>>>>>> usa filtrado SOMENTE para exibição/ordenação/conferência
         dados_p_filtrado = filtrar_linhas_presenca(dados_p)
 
         aberto, janela_conf = verificar_status_e_limpar(sheet_p_escrita, dados_p_filtrado)
@@ -617,7 +619,7 @@ try:
             st.success(f"✅ Presença registrada: {pos}º")
             if st.button("❌ EXCLUIR MINHA ASSINATURA", use_container_width=True):
                 email_logado = str(u.get("Email")).strip().lower()
-                # mantém delete pelo "dados_p" ORIGINAL (índices reais da planilha)
+                # delete pelo "dados_p" ORIGINAL (índices reais da planilha)
                 if dados_p and len(dados_p) > 1:
                     for idx, r in enumerate(dados_p):
                         if len(r) >= 6 and str(r[5]).strip().lower() == email_logado:
@@ -648,8 +650,8 @@ try:
                 st.session_state.conf_ativa = not st.session_state.conf_ativa
             if st.session_state.conf_ativa and (dados_p_filtrado and len(dados_p_filtrado) > 1):
                 for i, row in df_o.iterrows():
-                    # aqui não aparece mais "None" porque só entra nome válido
-                    st.checkbox(f"{row['Nº']} - {row.get('NOME')}", key=f"chk_p_{i}")
+                    # CORREÇÃO 3: DESCARTAR retorno do checkbox para não imprimir None
+                    _ = st.checkbox(f"{row['Nº']} - {row.get('NOME')}", key=f"chk_p_{i}")
 
         if dados_p_filtrado and len(dados_p_filtrado) > 1:
             insc = len(df_o)
