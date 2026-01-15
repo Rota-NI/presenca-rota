@@ -521,7 +521,7 @@ try:
                 buscar_usuarios_admin.clear()
                 st.rerun()
         with cB:
-            st.caption("ADM lê mais fresco (TTL=3s).")
+            st.caption("(TTL=3s).")
 
         st.subheader("⚙️ Configurações Globais")
         novo_limite = st.number_input("Limite máximo de usuários:", value=int(limite_max))
