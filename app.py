@@ -662,7 +662,7 @@ try:
         if ja:
             st.success(f"✅ Presença registrada: {pos}º")
             exc_btn = st.button(
-                f"❌ EXCLUIR — EMBARQUE {ciclo_hora} ({ciclo_data})",
+                f"❌ EXCLUIR — EMBARQUE",
                 use_container_width=True
             )
             if exc_btn:
@@ -676,7 +676,7 @@ try:
 
         elif aberto:
             salvar_btn = st.button(
-                f"🚀 SALVAR — EMBARQUE {ciclo_hora} ({ciclo_data})",
+                f"🚀 SALVAR — EMBARQUE",
                 use_container_width=True
             )
             if salvar_btn:
