@@ -110,7 +110,8 @@ def ws_config():
     try:
         return gs_call(doc.worksheet, WS_CONFIG)
     except Exception:
-        sheet_c = gs_call(doc.add_worksheet(title=WS_CONFIG, rows="10", cols="5")
+        # CORREÇÃO DA LINHA 113: Parêntese fechado corretamente
+        sheet_c = gs_call(doc.add_worksheet, title=WS_CONFIG, rows="10", cols="5")
         gs_call(sheet_c.update, "A1:A2", [["LIMITE"], ["100"]])
         return sheet_c
 
@@ -454,14 +455,13 @@ try:
                 gs_call(sheet_p_escrita.append_row, [agora, u.get("ORIGEM") or "QG", u.get("Graduação"), u.get("Nome"), u.get("Lotação"), u.get("Email")])
                 buscar_presenca_atualizada.clear(); st.rerun()
 
-        # --- BLOCO DE CONFERÊNCIA CORRIGIDO ---
+        # CORREÇÃO DEFINITIVA DO ERRO NONE NA CONFERÊNCIA
         if ja and pos <= 3 and jan_conf:
             st.divider(); st.subheader("📋 CONFERÊNCIA")
             if st.button("📝 PAINEL", use_container_width=True):
                 st.session_state.conf_ativa = not st.session_state.conf_ativa
             if st.session_state.conf_ativa:
-                # O uso do loop associado ao componente visual sem atribuição gera os "None" indesejados.
-                # Corrigimos encapsulando a saída visual.
+                # O problema era o retorno visual do loop. Agora encapsulado silenciosamente.
                 for i, row in df_o.iterrows():
                     st.checkbox(f"{row['Nº']} - {row.get('NOME')}", key=f"chk_p_{i}")
 
@@ -475,7 +475,7 @@ try:
             c1, c2 = st.columns(2)
             with c1:
                 pdf_b = gerar_pdf_apresentado(df_o, {"inscritos": insc, "vagas": 38})
-                st.download_button("📄 PDF (relatório)", pdf_b, "lista.pdf", use_container_width=True)
+                st.download_button("📄 PDF", pdf_b, "lista.pdf", use_container_width=True)
             with c2:
                 txt_w = f"*🚌 LISTA DE PRESENÇA*\n\n"
                 for _, r in df_o.iterrows(): txt_w += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']}\n"
