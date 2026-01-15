@@ -60,6 +60,29 @@ def tel_is_valid_11(s: str) -> bool:
 
 
 # ==========================================================
+# ✅ NOVO (APENAS O COMBINADO): RÓTULO DO CICLO PARA EXIBIÇÃO
+# ==========================================================
+def obter_ciclo_label_atual():
+    """
+    Retorna:
+      - ciclo_hora: "06:30" ou "18:30"
+      - ciclo_data: "dd/mm"
+    OBS: apenas para exibição (topo e texto de botões), sem alterar regras da lista.
+    """
+    agora = datetime.now(FUSO_BR)
+    h = agora.time()
+
+    # Regra simples e estável para rotular o ciclo do dia
+    if h < time(12, 0):
+        ciclo_hora = "06:30"
+    else:
+        ciclo_hora = "18:30"
+
+    ciclo_data = agora.strftime("%d/%m")
+    return ciclo_hora, ciclo_data
+
+
+# ==========================================================
 # WRAPPER COM RETRY / BACKOFF PARA 429
 # ==========================================================
 def gs_call(func, *args, **kwargs):
@@ -602,6 +625,10 @@ try:
         st.sidebar.markdown("---")
         st.sidebar.caption("Desenvolvido por: MAJ ANDRÉ AGUIAR - CAES")
 
+        # ✅ NOVO (APENAS O COMBINADO): Exibir ciclo no topo da tela
+        ciclo_hora, ciclo_data = obter_ciclo_label_atual()
+        st.info(f"🕒 **CICLO ATUAL:** EMBARQUE {ciclo_hora} ({ciclo_data})")
+
         sheet_p_escrita = ws_presenca()
 
         if st.session_state._force_refresh_presenca:
@@ -625,7 +652,8 @@ try:
 
         if ja:
             st.success(f"✅ Presença registrada: {pos}º")
-            exc_btn = st.button("❌ EXCLUIR MINHA ASSINATURA", use_container_width=True)
+            # ✅ ALTERADO (APENAS O COMBINADO): texto do botão com ciclo
+            exc_btn = st.button(f"❌ EXCLUIR — EMBARQUE {ciclo_hora} ({ciclo_data})", use_container_width=True)
             if exc_btn:
                 email_logado = str(u.get("Email")).strip().lower()
                 if dados_p and len(dados_p) > 1:
@@ -636,27 +664,13 @@ try:
                             st.rerun()
 
         elif aberto:
-            salvar_btn = st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True)
+            # ✅ ALTERADO (APENAS O COMBINADO): texto do botão com ciclo
+            salvar_btn = st.button(f"🚀 SALVAR — EMBARQUE {ciclo_hora} ({ciclo_data})", use_container_width=True)
             if salvar_btn:
                 agora = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
-
-                # ==========================================================
-                # ✅ ÚNICA CORREÇÃO PEDIDA:
-                # Gravar a origem usando o campo do Google Sheets: QG_RMCF_OUTROS
-                # (com tolerância caso o header esteja abreviado como "QG_RMCF_OUT")
-                # ==========================================================
-                origem_val = (
-                    (u.get("QG_RMCF_OUTROS") if isinstance(u, dict) else None) or
-                    (u.get("QG_RMCF_OUT") if isinstance(u, dict) else None) or
-                    ""
-                )
-                origem_val = str(origem_val).strip().upper()
-                if origem_val not in ("QG", "RMCF", "OUTROS"):
-                    origem_val = "QG"
-
                 gs_call(sheet_p_escrita.append_row, [
                     agora,
-                    origem_val,
+                    u.get("ORIGEM") or "QG",
                     u.get("Graduação"),
                     u.get("Nome"),
                     u.get("Lotação"),
