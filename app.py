@@ -110,7 +110,7 @@ def ws_config():
     try:
         return gs_call(doc.worksheet, WS_CONFIG)
     except Exception:
-        sheet_c = gs_call(doc.add_worksheet, title=WS_CONFIG, rows="10", cols="5")
+        sheet_c = gs_call(doc.add_worksheet(title=WS_CONFIG, rows="10", cols="5"))
         gs_call(sheet_c.update, "A1:A2", [["LIMITE"], ["100"]])
         return sheet_c
 
@@ -239,9 +239,6 @@ def aplicar_ordenacao(df):
     return df.drop(columns=["is_fc", "p_o", "p_g", "dt"]), df_v.drop(columns=["is_fc", "p_o", "p_g", "dt"])
 
 
-# ==========================================================
-# PDF CORRIGIDO
-# ==========================================================
 class PDFRelatorio(FPDF):
     def __init__(self, titulo="LISTA DE PRESENÇA", sub=None):
         super().__init__(orientation="P", unit="mm", format="A4")
@@ -346,7 +343,8 @@ try:
                     u_a = next((u for u in records_u_public if str(u.get("Email", "")).strip().lower() == l_e.strip().lower() and str(u.get("Senha", "")) == str(l_s) and tel_only_digits(u.get("TELEFONE", "")) == tel_login_digits), None)
                     if u_a:
                         if str(u_a.get("STATUS", "")).strip().upper() == "ATIVO":
-                            st.session_state.usuario_logado = u_a; st.rerun()
+                            st.session_state.usuario_logado = u_a
+                            st.rerun()
                         else: st.error("Aguardando aprovação do ADM.")
                     else: st.error("Dados incorretos.")
 
@@ -363,7 +361,8 @@ try:
                         if any(str(u.get("Email", "")).strip().lower() == n_e.strip().lower() for u in records_u_public): st.error("E-mail já cadastrado.")
                         else:
                             gs_call(sheet_u_escrita.append_row, [n_n, n_g, n_l, n_p, n_o, n_e, st.session_state._tel_cad_fmt, "PENDENTE"])
-                            buscar_usuarios_cadastrados.clear(); st.success("Cadastro realizado!")
+                            buscar_usuarios_cadastrados.clear()
+                            st.success("Cadastro realizado!")
 
         with t3:
             st.markdown("### 📖 Guia de Uso")
@@ -390,27 +389,24 @@ try:
             e_r = st.text_input("E-mail cadastrado:")
             if st.button("RECUPERAR DADOS", use_container_width=True):
                 u_r = next((u for u in records_u_public if str(u.get("Email", "")).strip().lower() == e_r.strip().lower()), None)
-                if u_r: st.info(f"Usuario: {u_r.get('Nome')} | Senha: {u_r.get('Senha')}")
+                if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')} | Tel: {u_r.get('TELEFONE')}")
 
         with t5:
             with st.form("form_admin"):
-                ad_u, ad_s = st.text_input("Usuario ADM:"), st.text_input("Senha ADM:", type="password")
+                ad_u, ad_s = st.text_input("Usuário ADM:"), st.text_input("Senha ADM:", type="password")
                 if st.form_submit_button("ACESSAR PAINEL"):
                     if ad_u == "Administrador" and ad_s == "Administrador@123":
                         st.session_state.is_admin = True; st.rerun()
 
     elif st.session_state.is_admin:
         st.header("🛡️ PAINEL ADMINISTRATIVO")
-        if st.button("⬅️ SAIR"): 
-            st.session_state.is_admin = False; st.rerun()
-        
+        if st.button("⬅️ SAIR"): st.session_state.is_admin = False; st.rerun()
         records_u = buscar_usuarios_admin()
         st.subheader("👥 Gestão de Usuários")
         for i, user in enumerate(records_u):
             status = str(user.get("STATUS", "")).upper()
             with st.expander(f"{user.get('Nome')} - {status}"):
                 c1, c2 = st.columns(2)
-                # Correção do tique visual no ADM
                 if c1.checkbox("Liberar", value=(status == "ATIVO"), key=f"adm_chk_{i}"):
                     if status != "ATIVO":
                         gs_call(sheet_u_escrita.update_cell, i + 2, 8, "ATIVO")
@@ -420,11 +416,10 @@ try:
                     buscar_usuarios_admin.clear(); st.rerun()
 
     else:
-        # USUÁRIO LOGADO - BARRA LATERAL RESTAURADA
         u = st.session_state.usuario_logado
         st.sidebar.markdown("### 👤 Usuário Conectado")
         st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
-        if st.sidebar.button("Sair"):
+        if st.sidebar.button("Sair", use_container_width=True):
             st.session_state.clear(); st.rerun()
         st.sidebar.markdown("---")
         st.sidebar.caption("Desenvolvido por: MAJ ANDRÉ AGUIAR - CAES")
@@ -434,48 +429,58 @@ try:
             buscar_presenca_atualizada.clear(); st.session_state._force_refresh_presenca = False
 
         dados_p = buscar_presenca_atualizada()
-        dados_p_filtrado = filtrar_linhas_presenca(dados_p)
-        aberto, janela_conf = verificar_status_e_limpar(sheet_p_escrita, dados_p_filtrado)
+        dados_p_f = filtrar_linhas_presenca(dados_p)
+        aberto, jan_conf = verificar_status_e_limpar(sheet_p_escrita, dados_p_f)
 
         df_o, df_v = pd.DataFrame(), pd.DataFrame()
         ja = False; pos = 999
-        if dados_p_filtrado and len(dados_p_filtrado) > 1:
-            df_o, df_v = aplicar_ordenacao(pd.DataFrame(dados_p_filtrado[1:], columns=dados_p_filtrado[0]))
+        if dados_p_f and len(dados_p_f) > 1:
+            df_o, df_v = aplicar_ordenacao(pd.DataFrame(dados_p_f[1:], columns=dados_p_f[0]))
             email_log = str(u.get("Email")).strip().lower()
             ja = any(email_log == str(row.get("EMAIL", "")).strip().lower() for _, row in df_o.iterrows())
             if ja: pos = df_o.index[df_o["EMAIL"].str.lower() == email_log].tolist()[0] + 1
 
         if ja:
             st.success(f"✅ Presença registrada: {pos}º")
-            if st.button("❌ EXCLUIR MINHA ASSINATURA"):
+            if st.button("❌ EXCLUIR MINHA ASSINATURA", use_container_width=True):
                 for idx, r in enumerate(dados_p):
                     if len(r) >= 6 and str(r[5]).strip().lower() == email_log:
                         gs_call(sheet_p_escrita.delete_rows, idx + 1)
                         buscar_presenca_atualizada.clear(); st.rerun()
         elif aberto:
-            if st.button("🚀 SALVAR MINHA PRESENÇA"):
+            if st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True):
                 agora = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
                 gs_call(sheet_p_escrita.append_row, [agora, u.get("ORIGEM") or "QG", u.get("Graduação"), u.get("Nome"), u.get("Lotação"), u.get("Email")])
                 buscar_presenca_atualizada.clear(); st.rerun()
 
-        # CORREÇÃO DO ERRO NONE NA CONFERÊNCIA
-        if ja and pos <= 3 and janela_conf:
+        # CORREÇÃO DEFINITIVA DO ERRO NONE NA CONFERÊNCIA
+        if ja and pos <= 3 and jan_conf:
             st.divider(); st.subheader("📋 CONFERÊNCIA")
             if st.button("📝 PAINEL", use_container_width=True):
                 st.session_state.conf_ativa = not st.session_state.conf_ativa
             if st.session_state.conf_ativa:
-                with st.container():
+                # Criamos um container para encapsular a saída visual do loop
+                con_conf = st.container()
+                with con_conf:
                     for i, row in df_o.iterrows():
-                        # O container impede que o Streamlit exiba o retorno da função (None)
+                        # Ao colocar dentro do container sem atribuição direta, o Streamlit não imprime o retorno (None)
                         st.checkbox(f"{row['Nº']} - {row.get('NOME')}", key=f"chk_p_{i}")
 
-        if dados_p_filtrado and len(dados_p_filtrado) > 1:
-            insc = len(df_o)
-            st.subheader(f"Inscritos: {insc} | Vagas: 38")
+        if dados_p_f and len(dados_p_f) > 1:
+            insc = len(df_o); rest = 38 - insc
+            st.subheader(f"Inscritos: {insc} | Vagas: 38 | {'Sobra' if rest >= 0 else 'Exc'}: {abs(rest)}")
+            if st.button("🔄 ATUALIZAR", use_container_width=True):
+                buscar_presenca_atualizada.clear(); st.rerun()
             st.write(f"<div class='tabela-responsiva'>{df_v.drop(columns=['EMAIL']).to_html(index=False, justify='center', border=0, escape=False)}</div>", unsafe_allow_html=True)
             
-            resumo = {"inscritos": insc, "vagas": 38}
-            st.download_button("📄 PDF", gerar_pdf_apresentado(df_o, resumo), "lista.pdf", use_container_width=True)
+            c1, c2 = st.columns(2)
+            with c1:
+                pdf_b = gerar_pdf_apresentado(df_o, {"inscritos": insc, "vagas": 38})
+                st.download_button("📄 PDF (relatório)", pdf_b, "lista.pdf", use_container_width=True)
+            with c2:
+                txt_w = f"*🚌 LISTA DE PRESENÇA*\n\n"
+                for _, r in df_o.iterrows(): txt_w += f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']}\n"
+                st.markdown(f'<a href="https://wa.me/?text={urllib.parse.quote(txt_w)}" target="_blank"><button style="width:100%; height:38px; background-color:#25D366; color:white; border:none; border-radius:4px; font-weight:bold;">🟢 WHATSAPP</button></a>', unsafe_allow_html=True)
 
     st.markdown('<div class="footer">Desenvolvido por: <b>MAJ ANDRÉ AGUIAR - CAES</b></div>', unsafe_allow_html=True)
 
