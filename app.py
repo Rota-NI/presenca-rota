@@ -540,7 +540,7 @@ try:
                     n_o = st.selectbox("Origem:", ["QG", "RMCF", "OUTROS"])
                     n_p = st.text_input("Senha:", type="password")
 
-                    cadastrou = st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True)
+                    cadastrou = st.form_submit_button("✍️ SALVAR CADASTRO 👈", use_container_width=True)
                     if cadastrou:
                         if not tel_is_valid_11(fmt_tel_cad):
                             st.error("Telefone inválido. Use DDD + 9 dígitos (ex: (21) 98765.4321).")
