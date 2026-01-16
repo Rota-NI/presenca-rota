@@ -679,7 +679,7 @@ try:
     else:
         u = st.session_state.usuario_logado
 
-        st.sidebar.markdown("### 👤 Usuário Conectado")
+        st.sidebar.markdown("### 👤 Usuário Conectado 🙍‍♂️")
         st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
 
         sair_user = st.sidebar.button("Sair", use_container_width=True)
