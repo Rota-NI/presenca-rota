@@ -25,6 +25,10 @@ WS_CONFIG = "Config"
 
 FUSO_BR = pytz.timezone("America/Sao_Paulo")
 
+# ==========================================================
+# GIF (LINK) PARA A TELA DE LOGIN
+# ==========================================================
+GIF_LOGIN_URL = "https://www.imagensanimadas.com/data/media/425/onibus-imagem-animada-0024.gif"
 
 # ==========================================================
 # TELEFONE:
@@ -262,7 +266,6 @@ def obter_ciclo_atual():
 
     em_fechamento_fds = (wd == 4 and t >= time(17, 0)) or (wd == 5) or (wd == 6 and t < time(19, 0))
     if em_fechamento_fds:
-        # Próximo ciclo: 06:30 da próxima segunda-feira
         dias_para_seg = (7 - wd) % 7  # sex->3, sáb->2, dom->1
         alvo_dt = (agora + timedelta(days=dias_para_seg)).date()
         alvo_h = "06:30"
@@ -488,6 +491,9 @@ try:
         t1, t2, t3, t4, t5 = st.tabs(["Login", "Cadastro", "Instruções", "Recuperar", "ADM"])
 
         with t1:
+            # GIF (LINK) preenchendo a área do login (acima do formulário)
+            st.image(GIF_LOGIN_URL, use_container_width=True)
+
             with st.form("form_login"):
                 l_e = st.text_input("E-mail:")
 
@@ -542,47 +548,13 @@ try:
 
                     cadastrou = st.form_submit_button("✍️ SALVAR CADASTRO 👈", use_container_width=True)
                     if cadastrou:
-                        # ==========================================================
-                        # OBRIGATÓRIO: todos os campos do CADASTRO
-                        # (alteração solicitada)
-                        # ==========================================================
-                        def norm_str(x):
-                            return str(x or "").strip()
-
-                        n_n_ok = bool(norm_str(n_n))
-                        n_e_ok = bool(norm_str(n_e))
-                        n_l_ok = bool(norm_str(n_l))
-                        n_p_ok = bool(norm_str(n_p))
-                        n_g_ok = bool(norm_str(n_g))
-                        n_o_ok = bool(norm_str(n_o))
-
-                        # e-mail básico
-                        email_ok = bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", norm_str(n_e)))
-
-                        missing = []
-                        if not n_n_ok: missing.append("Nome de Escala")
-                        if not n_e_ok: missing.append("E-mail")
-                        if not email_ok and n_e_ok: missing.append("E-mail (formato inválido)")
-                        if not tel_is_valid_11(fmt_tel_cad): missing.append("Telefone (inválido)")
-                        if not n_g_ok: missing.append("Graduação")
-                        if not n_l_ok: missing.append("Lotação")
-                        if not n_o_ok: missing.append("Origem")
-                        if not n_p_ok: missing.append("Senha")
-
-                        if missing:
-                            st.error("Preencha corretamente todos os campos: " + ", ".join(missing) + ".")
-                        elif any(str(u.get("Email", "")).strip().lower() == norm_str(n_e).lower() for u in records_u_public):
+                        if not tel_is_valid_11(fmt_tel_cad):
+                            st.error("Telefone inválido. Use DDD + 9 dígitos (ex: (21) 98765.4321).")
+                        elif any(str(u.get("Email", "")).strip().lower() == n_e.strip().lower() for u in records_u_public):
                             st.error("E-mail já cadastrado.")
                         else:
                             gs_call(sheet_u_escrita.append_row, [
-                                norm_str(n_n),
-                                norm_str(n_g),
-                                norm_str(n_l),
-                                norm_str(n_p),
-                                norm_str(n_o),
-                                norm_str(n_e),
-                                fmt_tel_cad,
-                                "PENDENTE"
+                                n_n, n_g, n_l, n_p, n_o, n_e, fmt_tel_cad, "PENDENTE"
                             ])
                             buscar_usuarios_cadastrados.clear()
                             buscar_usuarios_admin.clear()
