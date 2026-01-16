@@ -658,7 +658,7 @@ try:
 
         cA, cB = st.columns([1, 1])
         with cA:
-            att_btn = st.button("🔄 Atualizar Usuários 🫱🏼‍🫲🏼", use_container_width=True)
+            att_btn = st.button("🔄 Atualizar Usuários", use_container_width=True)
             if att_btn:
                 buscar_usuarios_admin.clear()
                 st.rerun()
@@ -800,7 +800,7 @@ try:
 
             c_up1, c_up2 = st.columns([1, 1])
             with c_up1:
-                up_btn = st.button("🔄 ATUALIZAR 🫱🏼‍🫲🏼", use_container_width=True)
+                up_btn = st.button("🔄 ATUALIZAR", use_container_width=True)
                 if up_btn:
                     buscar_presenca_atualizada.clear()
                     st.rerun()
