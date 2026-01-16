@@ -542,13 +542,47 @@ try:
 
                     cadastrou = st.form_submit_button("✍️ SALVAR CADASTRO 👈", use_container_width=True)
                     if cadastrou:
-                        if not tel_is_valid_11(fmt_tel_cad):
-                            st.error("Telefone inválido. Use DDD + 9 dígitos (ex: (21) 98765.4321).")
-                        elif any(str(u.get("Email", "")).strip().lower() == n_e.strip().lower() for u in records_u_public):
+                        # ==========================================================
+                        # OBRIGATÓRIO: todos os campos do CADASTRO
+                        # (alteração solicitada)
+                        # ==========================================================
+                        def norm_str(x):
+                            return str(x or "").strip()
+
+                        n_n_ok = bool(norm_str(n_n))
+                        n_e_ok = bool(norm_str(n_e))
+                        n_l_ok = bool(norm_str(n_l))
+                        n_p_ok = bool(norm_str(n_p))
+                        n_g_ok = bool(norm_str(n_g))
+                        n_o_ok = bool(norm_str(n_o))
+
+                        # e-mail básico
+                        email_ok = bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", norm_str(n_e)))
+
+                        missing = []
+                        if not n_n_ok: missing.append("Nome de Escala")
+                        if not n_e_ok: missing.append("E-mail")
+                        if not email_ok and n_e_ok: missing.append("E-mail (formato inválido)")
+                        if not tel_is_valid_11(fmt_tel_cad): missing.append("Telefone (inválido)")
+                        if not n_g_ok: missing.append("Graduação")
+                        if not n_l_ok: missing.append("Lotação")
+                        if not n_o_ok: missing.append("Origem")
+                        if not n_p_ok: missing.append("Senha")
+
+                        if missing:
+                            st.error("Preencha corretamente todos os campos: " + ", ".join(missing) + ".")
+                        elif any(str(u.get("Email", "")).strip().lower() == norm_str(n_e).lower() for u in records_u_public):
                             st.error("E-mail já cadastrado.")
                         else:
                             gs_call(sheet_u_escrita.append_row, [
-                                n_n, n_g, n_l, n_p, n_o, n_e, fmt_tel_cad, "PENDENTE"
+                                norm_str(n_n),
+                                norm_str(n_g),
+                                norm_str(n_l),
+                                norm_str(n_p),
+                                norm_str(n_o),
+                                norm_str(n_e),
+                                fmt_tel_cad,
+                                "PENDENTE"
                             ])
                             buscar_usuarios_cadastrados.clear()
                             buscar_usuarios_admin.clear()
