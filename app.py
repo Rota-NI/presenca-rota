@@ -210,9 +210,29 @@ def verificar_status_e_limpar(sheet_p, dados_p):
         except Exception:
             pass
 
-    is_aberto = (dia_semana == 6 and hora_atual >= time(19, 0)) or \
-                (dia_semana in [0, 1, 2, 3] and (hora_atual <= time(5, 0) or time(7, 0) <= hora_atual <= time(17, 0) or hora_atual >= time(19, 0))) or \
-                (dia_semana == 4 and time(7, 0) <= hora_atual <= time(17, 0))
+    is_aberto = False
+
+    # Regras de abertura/fechamento:
+    # - SEG a QUI: fecha apenas nas janelas 05:00-07:00 e 17:00-19:00
+    # - SEX: fecha às 17:00 e só reabre DOM às 19:00 (portanto SEX após 17:00 fica fechado)
+    # - SÁB: fechado o dia todo
+    # - DOM: abre a partir de 19:00
+    if dia_semana == 5:  # Sábado
+        is_aberto = False
+    elif dia_semana == 6:  # Domingo
+        is_aberto = (hora_atual >= time(19, 0))
+    elif dia_semana == 4:  # Sexta
+        if hora_atual >= time(17, 0):
+            is_aberto = False
+        elif time(5, 0) <= hora_atual < time(7, 0):
+            is_aberto = False
+        else:
+            is_aberto = True
+    else:  # Segunda a Quinta
+        if (time(5, 0) <= hora_atual < time(7, 0)) or (time(17, 0) <= hora_atual < time(19, 0)):
+            is_aberto = False
+        else:
+            is_aberto = True
 
     janela_conferencia = (time(5, 0) < hora_atual < time(7, 0)) or (time(17, 0) < hora_atual < time(19, 0))
     return is_aberto, janela_conferencia
@@ -223,22 +243,39 @@ def verificar_status_e_limpar(sheet_p, dados_p):
 # ==========================================================
 def obter_ciclo_atual():
     """
-    Regras:
-    - Se agora >= 19:00 -> inscrições são para 06:30 de amanhã
-    - Se agora < 07:00  -> inscrições são para 06:30 de hoje
-    - Se 07:00 <= agora < 19:00 -> inscrições são para 18:30 de hoje
+    Regras do ciclo (texto informativo):
+    - SEG a QUI:
+        * Se agora >= 19:00 -> inscrições são para 06:30 de amanhã
+        * Se agora < 07:00  -> inscrições são para 06:30 de hoje
+        * Se 07:00 <= agora < 19:00 -> inscrições são para 18:30 de hoje
+    - SEX:
+        * Até 16:59 segue regra normal acima
+        * A partir de 17:00 fecha e o próximo ciclo será 06:30 de SEGUNDA
+    - SÁB: fechado; próximo ciclo será 06:30 de SEGUNDA
+    - DOM:
+        * Antes de 19:00 fechado; próximo ciclo será 06:30 de SEGUNDA
+        * A partir de 19:00 aberto; inscrições são para 06:30 de amanhã (SEGUNDA)
     """
     agora = datetime.now(FUSO_BR)
     t = agora.time()
-    if t >= time(19, 0):
-        alvo_dt = (agora + timedelta(days=1)).date()
-        alvo_h = "06:30"
-    elif t < time(7, 0):
-        alvo_dt = agora.date()
+    wd = agora.weekday()
+
+    em_fechamento_fds = (wd == 4 and t >= time(17, 0)) or (wd == 5) or (wd == 6 and t < time(19, 0))
+    if em_fechamento_fds:
+        # Próximo ciclo: 06:30 da próxima segunda-feira
+        dias_para_seg = (7 - wd) % 7  # sex->3, sáb->2, dom->1
+        alvo_dt = (agora + timedelta(days=dias_para_seg)).date()
         alvo_h = "06:30"
     else:
-        alvo_dt = agora.date()
-        alvo_h = "18:30"
+        if t >= time(19, 0):
+            alvo_dt = (agora + timedelta(days=1)).date()
+            alvo_h = "06:30"
+        elif t < time(7, 0):
+            alvo_dt = agora.date()
+            alvo_h = "06:30"
+        else:
+            alvo_dt = agora.date()
+            alvo_h = "18:30"
 
     alvo_dt_str = alvo_dt.strftime("%d/%m/%Y")
     return alvo_h, alvo_dt_str
@@ -420,7 +457,7 @@ st.markdown('<div class="titulo-container"><div class="titulo-responsivo">🚌 R
 
 # Exibe o ciclo logo abaixo do título
 ciclo_h, ciclo_d = obter_ciclo_atual()
-st.markdown(f"<div class='subtitulo-ciclo'>Ciclo atual: <b>EMBARQUE {ciclo_h}h</b> do dia <b>{ciclo_d}</b></div>", unsafe_allow_html=True)
+st.markdown(f"<div class='subtitulo-ciclo'>Ciclo atual: <b>EMBARQUE {ciclo_h}</b> do dia <b>{ciclo_d}</b></div>", unsafe_allow_html=True)
 
 if "usuario_logado" not in st.session_state:
     st.session_state.usuario_logado = None
@@ -677,7 +714,7 @@ try:
 
         if ja:
             st.success(f"✅ Presença registrada: {pos}º")
-            exc_btn = st.button("❌ EXCLUIR MINHA PRESENÇA", use_container_width=True)
+            exc_btn = st.button("❌ EXCLUIR MINHA ASSINATURA", use_container_width=True)
             if exc_btn:
                 email_logado = str(u.get("Email")).strip().lower()
                 if dados_p and len(dados_p) > 1:
@@ -688,7 +725,7 @@ try:
                             st.rerun()
 
         elif aberto:
-            salvar_btn = st.button("🚀 CONFIRMAR MINHA PRESENÇA", use_container_width=True)
+            salvar_btn = st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True)
             if salvar_btn:
                 agora = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
                 gs_call(sheet_p_escrita.append_row, [
