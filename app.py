@@ -497,7 +497,7 @@ try:
 
                 l_s = st.text_input("Senha:", type="password")
 
-                entrou = st.form_submit_button("ENTRAR", use_container_width=True)
+                entrou = st.form_submit_button("✌️ ENTRAR 🤞", use_container_width=True)
                 if entrou:
                     if not tel_is_valid_11(fmt_tel_login):
                         st.error("Telefone inválido. Use DDD + 9 dígitos (ex: (21) 98765.4321).")
