@@ -689,7 +689,7 @@ try:
             st.rerun()
 
         st.sidebar.markdown("---")
-        st.sidebar.caption("Desenvolvido por: MAJ ANDRÉ AGUIAR - CAES")
+        st.sidebar.caption("Desenvolvido por: MAJ ANDRÉ AGUIAR - CAES®️")
 
         sheet_p_escrita = ws_presenca()
 
@@ -795,7 +795,7 @@ try:
                     unsafe_allow_html=True
                 )
 
-    st.markdown('<div class="footer">Desenvolvido por:       <b>MAJ ANDRÉ AGUIAR - CAES</b></div>', unsafe_allow_html=True)
+    st.markdown('<div class="footer">Desenvolvido por: <b>MAJ ANDRÉ AGUIAR - CAES®️</b></div>', unsafe_allow_html=True)
 
 except Exception as e:
     st.error(f"⚠️ Erro: {e}")
