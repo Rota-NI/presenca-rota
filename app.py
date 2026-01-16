@@ -25,6 +25,11 @@ WS_CONFIG = "Config"
 
 FUSO_BR = pytz.timezone("America/Sao_Paulo")
 
+# ==========================================================
+# GIF NO FINAL DA PÁGINA (alteração solicitada)
+# ==========================================================
+GIF_URL = "https://www.imagensanimadas.com/data/media/425/onibus-imagem-animada-0024.gif"
+
 
 # ==========================================================
 # TELEFONE:
@@ -606,8 +611,8 @@ try:
             * **Finais de Semana:** Abrem domingo às 19:00h.
             
             **2. Observação:**
-            * Nos períodos em que a lista ficar suspensa para conferência (05:00h às 07:00h / 17:00h às 19:00h), os três PPMM que estiverem no topo da lista terão acesso à lista de check up (botão no topo da lista) para tirar a falta de quem estará entrando no ônibus.
-            * Após o horário de 06:50h e de 18:50h, a lista será automaticamente zerada para que o novo ciclo da lista possa ocorrer.
+            * Nos períodos em que a lista ficar suspensa para conferência (05:00h às 07:00h / 17:00h às 19:00h), os três PPMM que estiverem no topo da lista terão acesso à lista de check up (botão no topo da lista) para tirar a falta de quem estará entrando no ônibus. O mais antigo assume e na ausência dele o seu sucessor assume.
+            * Após o horário de 06:50h e de 18:50h, a lista será automaticamente zerada para que o novo ciclo da lista possa ocorrer. Sendo assim, caso queira manter um histórico de viagem, antes desses horários, faça o download do pdf e/ou do resumo do W.Zap.
             """)
 
         with t4:
@@ -830,6 +835,19 @@ try:
                 )
 
     st.markdown('<div class="footer">Desenvolvido por: <b>MAJ ANDRÉ AGUIAR - CAES®️</b></div>', unsafe_allow_html=True)
+
+    # ==========================================================
+    # GIF NO FINAL DA PÁGINA (alteração solicitada)
+    #  - 20% menor => width:80%
+    # ==========================================================
+    st.markdown(
+        f"""
+        <div style="width:100%; text-align:center; margin-top:12px;">
+            <img src="{GIF_URL}" style="width:80%; max-width:520px; height:auto;" />
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 except Exception as e:
     st.error(f"⚠️ Erro: {e}")
