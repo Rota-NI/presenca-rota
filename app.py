@@ -56,7 +56,7 @@ def tel_is_valid_11(s: str) -> bool:
 
 
 # ==========================================================
-# WRAPPER COM RETRY
+# WRAPPER COM RETRY / BACKOFF PARA 429
 # ==========================================================
 def gs_call(func, *args, **kwargs):
     max_tries = 6
@@ -67,16 +67,17 @@ def gs_call(func, *args, **kwargs):
         except APIError as e:
             msg = str(e)
             is_429 = ("429" in msg) or ("Quota exceeded" in msg) or ("RESOURCE_EXHAUSTED" in msg)
-            if is_429:
+            is_5xx = any(code in msg for code in ["500", "502", "503", "504"])
+            if is_429 or is_5xx:
                 sleep_s = (base * (2 ** attempt)) + random.uniform(0.0, 0.35)
                 time_module.sleep(min(sleep_s, 6.0))
                 continue
             raise
-    raise APIError("Google Sheets: muitas requisições (429).")
+    raise APIError("Google Sheets: muitas requisições (429). Tente novamente em instantes.")
 
 
 # ==========================================================
-# CONEXÕES
+# CONEXÕES (CACHE_RESOURCE)
 # ==========================================================
 @st.cache_resource
 def conectar_gsheets():
@@ -111,10 +112,18 @@ def ws_config():
 
 
 # ==========================================================
-# LEITURAS
+# LEITURAS (CACHE_DATA)
 # ==========================================================
 @st.cache_data(ttl=30)
 def buscar_usuarios_cadastrados():
+    try:
+        sheet_u = ws_usuarios()
+        return gs_call(sheet_u.get_all_records)
+    except Exception:
+        return []
+
+@st.cache_data(ttl=3)
+def buscar_usuarios_admin():
     try:
         sheet_u = ws_usuarios()
         return gs_call(sheet_u.get_all_records)
@@ -144,65 +153,38 @@ def buscar_presenca_atualizada():
 def obter_info_ciclo():
     agora = datetime.now(FUSO_BR)
     hora_atual = agora.time()
-    
-    # Se passou das 19:00, o ciclo é o das 06:30 de amanhã
     if hora_atual >= time(19, 0):
-        data_ciclo = (agora + timedelta(days=1)).strftime("%d/%m/%Y")
-        hora_ciclo = "06:30h"
-    # Se está entre 07:00 e 19:00, o ciclo é o das 18:30 de hoje
+        data_c = (agora + timedelta(days=1)).strftime("%d/%m/%Y")
+        hora_c = "06:30h"
     elif hora_atual >= time(7, 0):
-        data_ciclo = agora.strftime("%d/%m/%Y")
-        hora_ciclo = "18:30h"
-    # Se é antes das 07:00 (madrugada), o ciclo é o das 06:30 de hoje
+        data_c = agora.strftime("%d/%m/%Y")
+        hora_c = "18:30h"
     else:
-        data_ciclo = agora.strftime("%d/%m/%Y")
-        hora_ciclo = "06:30h"
-        
-    return f"Ciclo: {data_ciclo} - {hora_ciclo}"
+        data_c = agora.strftime("%d/%m/%Y")
+        hora_c = "06:30h"
+    return f"Inscrições para o ciclo de {hora_c} do dia {data_c}"
 
 
 # ==========================================================
-# FILTRO E ORDENAÇÃO (CORRIGIDO)
+# FILTRO PARA NÃO EXIBIR LINHAS “LIXO”
 # ==========================================================
 def filtrar_linhas_presenca(dados_p):
     if not dados_p or len(dados_p) < 2:
         return dados_p
     header = dados_p[0]
-    body = [r for r in dados_p[1:] if len(r) >= 6 and r[0] and r[3] and r[5]]
-    return [header] + body
-
-def aplicar_ordenacao(df):
-    if df.empty:
-        return df, df
-
-    # Prioridade de Origem
-    p_orig = {"QG": 1, "RMCF": 2, "OUTROS": 3}
-    
-    # Prioridade de Graduação (Militares primeiro, depois Civis)
-    p_grad = {
-        "TCEL": 1, "MAJ": 2, "CAP": 3, "1º TEN": 4, "2º TEN": 5, "SUBTEN": 6,
-        "1º SGT": 7, "2º SGT": 8, "3º SGT": 9, "CB": 10, "SD": 11,
-        "FC COM": 12, "FC TER": 13
-    }
-
-    # Criar colunas auxiliares para ordenação
-    df["p_o"] = df["QG_RMCF_OUTROS"].map(p_orig).fillna(99)
-    df["p_g"] = df["GRADUAÇÃO"].map(p_grad).fillna(999)
-    df["dt"] = pd.to_datetime(df["DATA_HORA"], dayfirst=True, errors="coerce")
-
-    # Ordenação: 1º Origem, 2º Graduação, 3º Hora de entrada
-    df = df.sort_values(by=["p_o", "p_g", "dt"]).reset_index(drop=True)
-    
-    # Numeração com regra de excedentes (38 vagas)
-    df.insert(0, "Nº", [str(i + 1) if i < 38 else f"Exc-{i - 37:02d}" for i in range(len(df))])
-
-    df_v = df.copy()
-    for i, r in df_v.iterrows():
-        if "Exc-" in str(r["Nº"]):
-            for c in df_v.columns:
-                df_v.at[i, c] = f"<span style='color:#d32f2f; font-weight:bold;'>{r[c]}</span>"
-
-    return df.drop(columns=["p_o", "p_g", "dt"]), df_v.drop(columns=["p_o", "p_g", "dt"])
+    body = dados_p[1:]
+    def norm(x):
+        return str(x).strip() if x is not None else ""
+    body_ok = []
+    for row in body:
+        r = list(row) + [""] * (6 - len(row))
+        r = r[:6]
+        data_hora = norm(r[0])
+        nome = norm(r[3])
+        email = norm(r[5])
+        if data_hora and nome and email:
+            body_ok.append(r)
+    return [header] + body_ok
 
 
 def verificar_status_e_limpar(sheet_p, dados_p):
@@ -236,6 +218,39 @@ def verificar_status_e_limpar(sheet_p, dados_p):
     return is_aberto, janela_conferencia
 
 
+def aplicar_ordenacao(df):
+    if "EMAIL" not in df.columns:
+        df["EMAIL"] = "N/A"
+    if "QG_RMCF_OUTROS" not in df.columns and "ORIGEM" in df.columns:
+        df["QG_RMCF_OUTROS"] = df["ORIGEM"]
+    if "QG_RMCF_OUTROS" not in df.columns:
+        df["QG_RMCF_OUTROS"] = ""
+
+    # LÓGICA DE PRIORIDADE SOLICITADA
+    p_orig = {"QG": 1, "RMCF": 2, "OUTROS": 3}
+    p_grad = {
+        "TCEL": 1, "MAJ": 2, "CAP": 3, "1º TEN": 4, "2º TEN": 5, "SUBTEN": 6,
+        "1º SGT": 7, "2º SGT": 8, "3º SGT": 9, "CB": 10, "SD": 11,
+        "FC COM": 12, "FC TER": 13
+    }
+
+    df["p_o"] = df["QG_RMCF_OUTROS"].map(p_orig).fillna(99)
+    df["p_g"] = df["GRADUAÇÃO"].map(p_grad).fillna(999)
+    df["dt"] = pd.to_datetime(df["DATA_HORA"], dayfirst=True, errors="coerce")
+
+    # Ordenação: Origem -> Posto -> Hora
+    df = df.sort_values(by=["p_o", "p_g", "dt"]).reset_index(drop=True)
+    df.insert(0, "Nº", [str(i + 1) if i < 38 else f"Exc-{i - 37:02d}" for i in range(len(df))])
+
+    df_v = df.copy()
+    for i, r in df_v.iterrows():
+        if "Exc-" in str(r["Nº"]):
+            for c in df_v.columns:
+                df_v.at[i, c] = f"<span style='color:#d32f2f; font-weight:bold;'>{r[c]}</span>"
+
+    return df.drop(columns=["p_o", "p_g", "dt"]), df_v.drop(columns=["p_o", "p_g", "dt"])
+
+
 # ==========================================================
 # PDF
 # ==========================================================
@@ -261,6 +276,7 @@ class PDFRelatorio(FPDF):
     def footer(self):
         self.set_y(-12)
         self.set_font("Arial", "", 8)
+        self.set_text_color(90, 90, 90)
         self.cell(0, 6, f"Página {self.page_no()}/{{nb}} - Rota Nova Iguaçu", align="C")
 
 
@@ -269,57 +285,53 @@ def gerar_pdf_apresentado(df_o: pd.DataFrame, resumo: dict) -> bytes:
     sub = f"Emitido em: {agora}"
     pdf = PDFRelatorio(titulo="ROTA NOVA IGUAÇU - LISTA DE PRESENÇA", sub=sub)
     pdf.add_page()
-
     pdf.set_font("Arial", "B", 10)
     pdf.set_fill_color(240, 240, 240)
     pdf.cell(0, 8, "RESUMO", ln=True, fill=True)
-
     pdf.set_font("Arial", "", 9)
     insc = resumo.get("inscritos", 0)
     vagas = resumo.get("vagas", 38)
-    pdf.cell(0, 6, f"Inscritos: {insc} | Vagas: {vagas} | Excedentes: {max(0, insc-vagas)}", ln=True)
+    pdf.cell(0, 6, f"Inscritos: {insc} | Vagas: {vagas} | Sobra: {max(0, vagas-insc)} | Excedentes: {max(0, insc-vagas)}", ln=True)
     pdf.ln(2)
-
     headers = ["Nº", "GRADUAÇÃO", "NOME", "LOTAÇÃO", "ORIGEM"]
     col_w = [12, 26, 78, 55, 19]
-
     pdf.set_font("Arial", "B", 9)
     pdf.set_fill_color(30, 30, 30)
     pdf.set_text_color(255, 255, 255)
-
     for i, h in enumerate(headers):
         pdf.cell(col_w[i], 7, h, border=0, align="C", fill=True)
     pdf.ln()
-
     pdf.set_text_color(0, 0, 0)
     pdf.set_font("Arial", "", 8)
-
     for idx, (_, r) in enumerate(df_o.iterrows()):
         is_exc = "Exc-" in str(r.get("Nº", ""))
         pdf.set_fill_color(255, 235, 238) if is_exc else pdf.set_fill_color(245, 245, 245) if idx % 2 == 0 else pdf.set_fill_color(255, 255, 255)
-        
-        origem = str(r.get("QG_RMCF_OUTROS", "")).strip()
-
+        origem = str(r.get("QG_RMCF_OUTROS", "") or r.get("ORIGEM", "") or "").strip()
         pdf.cell(col_w[0], 6, str(r.get("Nº", "")), border=0, fill=True)
         pdf.cell(col_w[1], 6, str(r.get("GRADUAÇÃO", "")), border=0, fill=True)
         pdf.cell(col_w[2], 6, str(r.get("NOME", ""))[:42], border=0, fill=True)
         pdf.cell(col_w[3], 6, str(r.get("LOTAÇÃO", ""))[:34], border=0, fill=True)
         pdf.cell(col_w[4], 6, origem[:10], border=0, align="C", fill=True)
         pdf.ln()
-
+    pdf.ln(4)
+    pdf.set_font("Arial", "I", 8)
+    pdf.set_text_color(80, 80, 80)
+    pdf.multi_cell(0, 5, "Observação: os itens marcados como 'Exc-xx' representam excedentes além do limite de 38 vagas.")
     return pdf.output(dest="S").encode("latin-1")
 
 
 # ==========================================================
-# INTERFACE STREAMLIT
+# INTERFACE
 # ==========================================================
 st.set_page_config(page_title="Rota Nova Iguaçu", layout="centered")
+st.markdown('<script src="https://telegram.org/js/telegram-web-app.js"></script>', unsafe_allow_html=True)
 
 st.markdown("""
 <style>
     .titulo-container { text-align: center; width: 100%; }
     .titulo-responsivo { font-size: clamp(1.2rem, 5vw, 2.2rem); font-weight: bold; margin-bottom: 5px; }
-    .ciclo-info { font-size: 1.1rem; color: #555; margin-bottom: 20px; font-weight: 500; }
+    .ciclo-texto { font-size: 1rem; color: #666; margin-bottom: 20px; font-weight: bold; }
+    .stCheckbox { background-color: #f8f9fa; padding: 5px; border-radius: 4px; border: 1px solid #eee; }
     .tabela-responsiva { width: 100%; overflow-x: auto; }
     table { width: 100% !important; font-size: 10px; table-layout: fixed; border-collapse: collapse; }
     th, td { text-align: center; padding: 2px !important; white-space: normal !important; word-wrap: break-word; }
@@ -328,13 +340,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="titulo-container"><div class="titulo-responsivo">🚌 ROTA NOVA IGUAÇU 🚌</div>', unsafe_allow_html=True)
-# Exibe a data e hora do ciclo atual abaixo do título
-st.markdown(f'<div class="titulo-container"><div class="ciclo-info">{obter_info_ciclo()}</div></div>', unsafe_allow_html=True)
+st.markdown(f'<div class="ciclo-texto">{obter_info_ciclo()}</div></div>', unsafe_allow_html=True)
 
 if "usuario_logado" not in st.session_state: st.session_state.usuario_logado = None
 if "is_admin" not in st.session_state: st.session_state.is_admin = False
 if "conf_ativa" not in st.session_state: st.session_state.conf_ativa = False
 if "_force_refresh_presenca" not in st.session_state: st.session_state._force_refresh_presenca = False
+if "_adm_first_load" not in st.session_state: st.session_state._adm_first_load = False
 if "_tel_login_fmt" not in st.session_state: st.session_state._tel_login_fmt = ""
 if "_tel_cad_fmt" not in st.session_state: st.session_state._tel_cad_fmt = ""
 
@@ -352,20 +364,22 @@ try:
                 raw_tel_login = st.text_input("Telefone:", value=st.session_state._tel_login_fmt)
                 st.session_state._tel_login_fmt = tel_format_br(raw_tel_login)
                 l_s = st.text_input("Senha:", type="password")
-                if st.form_submit_button("ENTRAR", use_container_width=True):
-                    tel_login_digits = tel_only_digits(st.session_state._tel_login_fmt)
-                    u_a = next((u for u in records_u_public if str(u.get("Email", "")).lower() == l_e.strip().lower() 
-                               and str(u.get("Senha", "")) == str(l_s) 
-                               and tel_only_digits(u.get("TELEFONE", "")) == tel_login_digits), None)
-                    if u_a:
-                        if str(u_a.get("STATUS")).upper() == "ATIVO":
-                            st.session_state.usuario_logado = u_a
-                            st.rerun()
-                        else: st.error("Aguardando aprovação do Administrador.")
-                    else: st.error("Dados incorretos.")
+                entrou = st.form_submit_button("ENTRAR", use_container_width=True)
+                if entrou:
+                    if not tel_is_valid_11(st.session_state._tel_login_fmt):
+                        st.error("Telefone inválido.")
+                    else:
+                        tel_digits = tel_only_digits(st.session_state._tel_login_fmt)
+                        u_a = next((u for u in records_u_public if str(u.get("Email","")).lower() == l_e.strip().lower() and str(u.get("Senha","")) == str(l_s) and tel_only_digits(u.get("TELEFONE","")) == tel_digits), None)
+                        if u_a:
+                            if str(u_a.get("STATUS")).upper() == "ATIVO":
+                                st.session_state.usuario_logado = u_a
+                                st.rerun()
+                            else: st.error("Aguardando aprovação do Administrador.")
+                        else: st.error("Dados incorretos.")
 
         with t2:
-            if len(records_u_public) >= limite_max: st.warning(f"⚠️ Limite de {limite_max} atingido.")
+            if len(records_u_public) >= limite_max: st.warning(f"⚠️ Limite de {limite_max} usuários atingido.")
             else:
                 with st.form("form_novo_cadastro"):
                     n_n = st.text_input("Nome de Escala:")
@@ -378,13 +392,41 @@ try:
                     n_p = st.text_input("Senha:", type="password")
                     if st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True):
                         if not tel_is_valid_11(st.session_state._tel_cad_fmt): st.error("Telefone inválido.")
-                        elif any(str(u.get("Email")).lower() == n_e.strip().lower() for u in records_u_public): st.error("E-mail já cadastrado.")
+                        elif any(str(u.get("Email","")).lower() == n_e.strip().lower() for u in records_u_public): st.error("E-mail já cadastrado.")
                         else:
                             gs_call(sheet_u_escrita.append_row, [n_n, n_g, n_l, n_p, n_o, n_e, st.session_state._tel_cad_fmt, "PENDENTE"])
                             buscar_usuarios_cadastrados.clear()
-                            st.success("Cadastro realizado! Aguarde aprovação.")
+                            st.success("Cadastro realizado! Aguardando aprovação.")
                             st.rerun()
-        # ... (Instruções, Recuperar e ADM permanecem com a lógica anterior)
+
+        with t3:
+            st.markdown("### 📖 Guia de Uso")
+            st.success("📲 **COMO INSTALAR (TELA INICIAL)**")
+            st.markdown("**No Chrome (Android):** Toque nos 3 pontos (⋮) e em 'Instalar Aplicativo'.")
+            st.markdown("**No Safari (iPhone):** Toque em Compartilhar (⬆️) e em 'Adicionar à Tela de Início'.")
+            st.markdown("**No Telegram:** Procure o bot `@RotaNovaIguacuBot` e toque no botão 'Abrir App Rota' no menu.")
+            st.markdown("**QR CODE:** https://drive.google.com/file/d/1RU1i0u1hSqdfaL3H7HUaeV4hRvR2cROf/view?usp=sharing")
+            st.markdown("**LINK PARA NAVEGADOR:** https://presenca-rota-gbiwh9bjrwdergzc473xyg.streamlit.app/")
+            st.divider()
+            st.info("**CADASTRO E LOGIN:** Use seu e-mail como identificador único.")
+            st.markdown("""
+            **1. Regras de Horário:**
+            * **Manhã:** Inscrições abertas até às 05:00h. Reabre às 07:00h.
+            * **Tarde:** Inscrições abertas até às 17:00h. Reabre às 19:00h.
+            * **Finais de Semana:** Abrem domingo às 19:00h.
+            
+            **2. Observação:**
+            * Nos períodos em que a lista ficar suspensa para conferência (05:00h às 07:00h / 17:00h às 19:00h), os três PPMM que estiverem no topo da lista terão acesso à lista de check up (botão no topo da lista) para tirar a falta de quem estará entrando no ônibus.
+            * Após o horário de 06:50h e de 18:50h, a lista será automaticamente zerada para que o novo ciclo da lista possa ocorrer.
+            """)
+
+        with t4:
+            e_r = st.text_input("E-mail cadastrado:")
+            if st.button("RECUPERAR DADOS", use_container_width=True):
+                u_r = next((u for u in records_u_public if str(u.get("Email","")).lower() == e_r.strip().lower()), None)
+                if u_r: st.info(f"Usuário: {u_r.get('Nome')} | Senha: {u_r.get('Senha')} | Tel: {u_r.get('TELEFONE')}")
+                else: st.error("E-mail não encontrado.")
+
         with t5:
             with st.form("form_admin"):
                 ad_u = st.text_input("Usuário ADM:")
@@ -392,25 +434,40 @@ try:
                 if st.form_submit_button("ACESSAR PAINEL"):
                     if ad_u == "Administrador" and ad_s == "Administrador@123":
                         st.session_state.is_admin = True
+                        st.session_state._adm_first_load = True
                         st.rerun()
                     else: st.error("ADM inválido.")
 
     elif st.session_state.is_admin:
-        # Painel ADM
         st.header("🛡️ PAINEL ADMINISTRATIVO")
         if st.button("⬅️ SAIR DO PAINEL"):
             st.session_state.is_admin = False
             st.rerun()
-        # (Gestão de usuários simplificada para o exemplo)
-        st.write("Gerencie os usuários na planilha.")
+        if st.session_state._adm_first_load:
+            buscar_usuarios_admin.clear()
+            st.session_state._adm_first_load = False
+        records_u = buscar_usuarios_admin()
+        # ... (Gestão de usuários original mantida)
+        for i, user in enumerate(records_u):
+            status = str(user.get("STATUS", "")).upper()
+            with st.expander(f"{user.get('Graduação')} {user.get('Nome')} - {status}"):
+                c1, c2, c3 = st.columns([2, 1, 1])
+                c1.write(f"📧 {user.get('Email')} | 📱 {user.get('TELEFONE')}")
+                new_val = c2.checkbox("Liberar", value=(status == "ATIVO"), key=f"adm_chk_{i}")
+                if new_val != (status == "ATIVO"):
+                    gs_call(sheet_u_escrita.update_cell, i + 2, 8, "ATIVO" if new_val else "INATIVO")
+                    buscar_usuarios_admin.clear()
+                    st.rerun()
 
     else:
-        # USUÁRIO LOGADO
         u = st.session_state.usuario_logado
+        st.sidebar.markdown("### 👤 Usuário Conectado")
         st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
-        if st.sidebar.button("Sair"):
+        if st.sidebar.button("Sair", use_container_width=True):
             st.session_state.clear()
             st.rerun()
+        st.sidebar.markdown("---")
+        st.sidebar.caption("Desenvolvido por: MAJ ANDRÉ AGUIAR - CAES")
 
         sheet_p_escrita = ws_presenca()
         if st.session_state._force_refresh_presenca:
@@ -425,14 +482,10 @@ try:
         ja, pos = False, 999
 
         if dados_p_show and len(dados_p_show) > 1:
-            df_temp = pd.DataFrame(dados_p_show[1:], columns=dados_p_show[0])
-            df_o, df_v = aplicar_ordenacao(df_temp)
+            df_o, df_v = aplicar_ordenacao(pd.DataFrame(dados_p_show[1:], columns=dados_p_show[0]))
             email_logado = str(u.get("Email")).strip().lower()
-            if not df_o.empty:
-                filtro_u = df_o["EMAIL"].str.lower() == email_logado
-                if filtro_u.any():
-                    ja = True
-                    pos = df_o.index[filtro_u].tolist()[0] + 1
+            ja = any(email_logado == str(row.get("EMAIL", "")).strip().lower() for _, row in df_o.iterrows())
+            if ja: pos = df_o.index[df_o["EMAIL"].str.lower() == email_logado].tolist()[0] + 1
 
         if ja:
             st.success(f"✅ Presença registrada: {pos}º")
@@ -444,10 +497,9 @@ try:
                         st.rerun()
         elif aberto:
             if st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True):
-                agora_str = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
-                # CORREÇÃO AQUI: u.get("QG_RMCF_OUTROS") garante que pega o campo certo do cadastro
+                # CORREÇÃO: Pega o campo exato "QG_RMCF_OUTROS" do cadastro
                 gs_call(sheet_p_escrita.append_row, [
-                    agora_str,
+                    datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"),
                     u.get("QG_RMCF_OUTROS") or "QG",
                     u.get("Graduação"),
                     u.get("Nome"),
@@ -456,20 +508,27 @@ try:
                 ])
                 buscar_presenca_atualizada.clear()
                 st.rerun()
-        else:
-            st.info("⌛ Lista fechada para novas inscrições.")
+        else: st.info("⌛ Lista fechada para novas inscrições.")
+
+        # CONFERÊNCIA
+        if ja and pos <= 3 and janela_conf:
+            st.divider()
+            st.subheader("📋 CONFERÊNCIA")
+            if st.button("📝 PAINEL", use_container_width=True): st.session_state.conf_ativa = not st.session_state.conf_ativa
+            if st.session_state.conf_ativa and (dados_p_show and len(dados_p_show) > 1):
+                for i, row in df_o.iterrows():
+                    st.checkbox(f"{row.get('Nº','')} - {row.get('NOME','')}", key=f"chk_p_{i}")
 
         if dados_p_show and len(dados_p_show) > 1:
             st.subheader(f"Inscritos: {len(df_o)} | Vagas: 38")
             st.write(f"<div class='tabela-responsiva'>{df_v.drop(columns=['EMAIL']).to_html(index=False, justify='center', border=0, escape=False)}</div>", unsafe_allow_html=True)
-            
             c1, c2 = st.columns(2)
             with c1:
                 pdf_bytes = gerar_pdf_apresentado(df_o, {"inscritos": len(df_o), "vagas": 38})
                 st.download_button("📄 PDF (relatório)", pdf_bytes, "lista_rota.pdf", use_container_width=True)
             with c2:
-                txt_w = urllib.parse.quote(f"*🚌 LISTA ROTA - {obter_info_ciclo()}*\n\n" + "\n".join([f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']}" for _, r in df_o.iterrows()]))
-                st.markdown(f'<a href="https://wa.me/?text={txt_w}" target="_blank"><button style="width:100%; height:38px; background-color:#25D366; color:white; border:none; border-radius:4px; font-weight:bold;">🟢 WHATSAPP</button></a>', unsafe_allow_html=True)
+                txt_w = "*🚌 LISTA DE PRESENÇA*\n\n" + "\n".join([f"{r['Nº']}. {r['GRADUAÇÃO']} {r['NOME']}" for _, r in df_o.iterrows()])
+                st.markdown(f'<a href="https://wa.me/?text={urllib.parse.quote(txt_w)}" target="_blank"><button style="width:100%; height:38px; background-color:#25D366; color:white; border:none; border-radius:4px; font-weight:bold;">🟢 WHATSAPP</button></a>', unsafe_allow_html=True)
 
     st.markdown('<div class="footer">Desenvolvido por: <b>MAJ ANDRÉ AGUIAR - CAES</b></div>', unsafe_allow_html=True)
 
