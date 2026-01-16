@@ -784,7 +784,7 @@ try:
         if ja and pos <= 3 and janela_conf:
             st.divider()
             st.subheader("📋 CONFERÊNCIA")
-            painel_btn = st.button("📝 PAINEL", use_container_width=True)
+            painel_btn = st.button("✍️ CONFERÊNCIA DE EMBARQUE ✍️", use_container_width=True)
             if painel_btn:
                 st.session_state.conf_ativa = not st.session_state.conf_ativa
 
