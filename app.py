@@ -153,25 +153,6 @@ def buscar_presenca_atualizada():
     except Exception:
         return None
 
-# ==========================================================
-# INFORMAÇÃO DO CICLO (NOVO)
-# ==========================================================
-def obter_info_ciclo():
-    agora = datetime.now(FUSO_BR)
-    hora_atual = agora.time()
-    
-    if hora_atual >= time(19, 0):
-        data_c = (agora + timedelta(days=1)).strftime("%d/%m/%Y")
-        hora_c = "06:30h"
-    elif hora_atual >= time(7, 0):
-        data_c = agora.strftime("%d/%m/%Y")
-        hora_c = "18:30h"
-    else:
-        data_c = agora.strftime("%d/%m/%Y")
-        hora_c = "06:30h"
-        
-    return f"Ciclo de {hora_c} do dia {data_c}"
-
 
 # ==========================================================
 # FILTRO PARA NÃO EXIBIR LINHAS “LIXO” (evita final estranho)
@@ -179,7 +160,7 @@ def obter_info_ciclo():
 def filtrar_linhas_presenca(dados_p):
     """
     Mantém somente linhas válidas para exibição/ordenação/conferência:
-    - pelo menos 6 colunas (DATA, ORIGEM, GRAD, NOME, LOTAÇÃO, EMAIL)
+    - pelo menos 6 colunas (DATA, QG_RMCF_OUTROS, GRAD, NOME, LOTAÇÃO, EMAIL)
     - DATA, NOME e EMAIL preenchidos
     """
     if not dados_p or len(dados_p) < 2:
@@ -237,30 +218,79 @@ def verificar_status_e_limpar(sheet_p, dados_p):
     return is_aberto, janela_conferencia
 
 
+# ==========================================================
+# CICLO (exibição abaixo do título)
+# ==========================================================
+def obter_ciclo_atual():
+    """
+    Regras:
+    - Se agora >= 19:00 -> inscrições são para 06:30 de amanhã
+    - Se agora < 07:00  -> inscrições são para 06:30 de hoje
+    - Se 07:00 <= agora < 19:00 -> inscrições são para 18:30 de hoje
+    """
+    agora = datetime.now(FUSO_BR)
+    t = agora.time()
+    if t >= time(19, 0):
+        alvo_dt = (agora + timedelta(days=1)).date()
+        alvo_h = "06:30"
+    elif t < time(7, 0):
+        alvo_dt = agora.date()
+        alvo_h = "06:30"
+    else:
+        alvo_dt = agora.date()
+        alvo_h = "18:30"
+
+    alvo_dt_str = alvo_dt.strftime("%d/%m/%Y")
+    return alvo_h, alvo_dt_str
+
+
 def aplicar_ordenacao(df):
     if "EMAIL" not in df.columns:
         df["EMAIL"] = "N/A"
 
-    # garante a coluna ORIGEM para PDF (vem do QG_RMCF_OUTROS)
+    # Garantia: coluna QG_RMCF_OUTROS deve existir na planilha de presença
     if "QG_RMCF_OUTROS" not in df.columns and "ORIGEM" in df.columns:
         df["QG_RMCF_OUTROS"] = df["ORIGEM"]
     if "QG_RMCF_OUTROS" not in df.columns:
         df["QG_RMCF_OUTROS"] = ""
 
-    # NOVA LÓGICA DE PRIORIDADE
+    # Prioridades
     p_orig = {"QG": 1, "RMCF": 2, "OUTROS": 3}
-    p_grad = {
+
+    # Ordem solicitada (grupo "normal")
+    p_grad_normal = {
         "TCEL": 1, "MAJ": 2, "CAP": 3, "1º TEN": 4, "2º TEN": 5, "SUBTEN": 6,
-        "1º SGT": 7, "2º SGT": 8, "3º SGT": 9, "CB": 10, "SD": 11,
-        "FC COM": 12, "FC TER": 13
+        "1º SGT": 7, "2º SGT": 8, "3º SGT": 9, "CB": 10, "SD": 11
     }
 
+    # Grupo FC: primeiro FC COM (grupo 1), depois FC TER (grupo 2)
+    def grupo_fc(grad):
+        g = str(grad or "").strip().upper()
+        if g == "FC COM":
+            return 1
+        if g == "FC TER":
+            return 2
+        return 0
+
+    df["grupo_fc"] = df["GRADUAÇÃO"].apply(grupo_fc)
+
+    # Origem sempre: QG -> RMCF -> OUTROS (dentro de cada grupo)
     df["p_o"] = df["QG_RMCF_OUTROS"].map(p_orig).fillna(99)
-    df["p_g"] = df["GRADUAÇÃO"].map(p_grad).fillna(999)
+
+    # Para o grupo normal, aplica ordem de graduação; para FC, deixa 0 (desempate por dt)
+    def p_grad(row):
+        if int(row.get("grupo_fc", 0)) == 0:
+            return p_grad_normal.get(str(row.get("GRADUAÇÃO", "")).strip().upper(), 999)
+        return 0
+
+    df["p_g"] = df.apply(p_grad, axis=1)
+
+    # Desempate por quem entrou primeiro
     df["dt"] = pd.to_datetime(df["DATA_HORA"], dayfirst=True, errors="coerce")
 
-    # Ordenação por Origem, depois Graduação, depois Tempo (Desempate)
-    df = df.sort_values(by=["p_o", "p_g", "dt"]).reset_index(drop=True)
+    # Ordenação final conforme regra
+    df = df.sort_values(by=["grupo_fc", "p_o", "p_g", "dt"]).reset_index(drop=True)
+
     df.insert(0, "Nº", [str(i + 1) if i < 38 else f"Exc-{i - 37:02d}" for i in range(len(df))])
 
     df_v = df.copy()
@@ -269,7 +299,7 @@ def aplicar_ordenacao(df):
             for c in df_v.columns:
                 df_v.at[i, c] = f"<span style='color:#d32f2f; font-weight:bold;'>{r[c]}</span>"
 
-    return df.drop(columns=["p_o", "p_g", "dt"]), df_v.drop(columns=["p_o", "p_g", "dt"])
+    return df.drop(columns=["grupo_fc", "p_o", "p_g", "dt"]), df_v.drop(columns=["grupo_fc", "p_o", "p_g", "dt"])
 
 
 # ==========================================================
@@ -300,7 +330,6 @@ class PDFRelatorio(FPDF):
         self.set_y(-12)
         self.set_font("Arial", "", 8)
         self.set_text_color(90, 90, 90)
-        # Sem unicode problemático
         self.cell(0, 6, f"Página {self.page_no()}/{{nb}} - Rota Nova Iguaçu", align="C")
 
 
@@ -327,8 +356,6 @@ def gerar_pdf_apresentado(df_o: pd.DataFrame, resumo: dict) -> bytes:
 
     # Tabela com ORIGEM no final (direita)
     headers = ["Nº", "GRADUAÇÃO", "NOME", "LOTAÇÃO", "ORIGEM"]
-
-    # Ajuste para caber em A4: soma ~190mm (margens ok)
     col_w = [12, 26, 78, 55, 19]
 
     pdf.set_font("Arial", "B", 9)
@@ -379,8 +406,8 @@ st.markdown('<script src="https://telegram.org/js/telegram-web-app.js"></script>
 st.markdown("""
 <style>
     .titulo-container { text-align: center; width: 100%; }
-    .titulo-responsivo { font-size: clamp(1.2rem, 5vw, 2.2rem); font-weight: bold; margin-bottom: 5px; }
-    .subtitulo-ciclo { font-size: 1.1rem; color: #555; margin-bottom: 20px; font-weight: 500; }
+    .titulo-responsivo { font-size: clamp(1.2rem, 5vw, 2.2rem); font-weight: bold; margin-bottom: 6px; }
+    .subtitulo-ciclo { text-align:center; font-size: 0.95rem; color: #444; margin-bottom: 16px; }
     .stCheckbox { background-color: #f8f9fa; padding: 5px; border-radius: 4px; border: 1px solid #eee; }
     .tabela-responsiva { width: 100%; overflow-x: auto; }
     table { width: 100% !important; font-size: 10px; table-layout: fixed; border-collapse: collapse; }
@@ -389,9 +416,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="titulo-container"><div class="titulo-responsivo">🚌 ROTA NOVA IGUAÇU 🚌</div>', unsafe_allow_html=True)
-# EXIBIÇÃO DO CICLO CONFORME SOLICITADO
-st.markdown(f'<div class="subtitulo-ciclo">{obter_info_ciclo()}</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="titulo-container"><div class="titulo-responsivo">🚌 ROTA NOVA IGUAÇU 🚌</div></div>', unsafe_allow_html=True)
+
+# Exibe o ciclo logo abaixo do título
+ciclo_h, ciclo_d = obter_ciclo_atual()
+st.markdown(f"<div class='subtitulo-ciclo'>Ciclo atual: <b>EMBARQUE {ciclo_h}</b> do dia <b>{ciclo_d}</b></div>", unsafe_allow_html=True)
 
 if "usuario_logado" not in st.session_state:
     st.session_state.usuario_logado = None
@@ -662,7 +691,6 @@ try:
             salvar_btn = st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True)
             if salvar_btn:
                 agora = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
-                # CORREÇÃO: Pega o campo exato "QG_RMCF_OUTROS" do usuário
                 gs_call(sheet_p_escrita.append_row, [
                     agora,
                     u.get("QG_RMCF_OUTROS") or "QG",
@@ -730,7 +758,7 @@ try:
                     unsafe_allow_html=True
                 )
 
-    st.markdown('<div class="footer">Desenvolvido por: <b>MAJ ANDRÉ AGUIAR - CAES</b></div>', unsafe_allow_html=True)
+    st.markdown('<div class="footer">Desenvolvido por:       <b>MAJ ANDRÉ AGUIAR - CAES</b></div>', unsafe_allow_html=True)
 
 except Exception as e:
     st.error(f"⚠️ Erro: {e}")
