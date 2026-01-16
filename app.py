@@ -714,7 +714,7 @@ try:
 
         if ja:
             st.success(f"✅ Presença registrada: {pos}º")
-            exc_btn = st.button("❌ EXCLUIR MINHA PRESENÇA", use_container_width=True)
+            exc_btn = st.button("❌ EXCLUIR MINHA PRESENÇA ⚠️", use_container_width=True)
             if exc_btn:
                 email_logado = str(u.get("Email")).strip().lower()
                 if dados_p and len(dados_p) > 1:
@@ -725,7 +725,7 @@ try:
                             st.rerun()
 
         elif aberto:
-            salvar_btn = st.button("🚀 CONFIRMAR MINHA PRESENÇA", use_container_width=True)
+            salvar_btn = st.button("🚀 CONFIRMAR MINHA PRESENÇA ✅", use_container_width=True)
             if salvar_btn:
                 agora = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
                 gs_call(sheet_p_escrita.append_row, [
