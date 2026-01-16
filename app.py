@@ -457,7 +457,7 @@ st.markdown('<div class="titulo-container"><div class="titulo-responsivo">🚌 R
 
 # Exibe o ciclo logo abaixo do título
 ciclo_h, ciclo_d = obter_ciclo_atual()
-st.markdown(f"<div class='subtitulo-ciclo'>Ciclo atual: <b>EMBARQUE {ciclo_h}</b> do dia <b>{ciclo_d}</b></div>", unsafe_allow_html=True)
+st.markdown(f"<div class='subtitulo-ciclo'>Ciclo atual: <b>EMBARQUE {ciclo_h}h</b> do dia <b>{ciclo_d}</b></div>", unsafe_allow_html=True)
 
 if "usuario_logado" not in st.session_state:
     st.session_state.usuario_logado = None
@@ -714,7 +714,7 @@ try:
 
         if ja:
             st.success(f"✅ Presença registrada: {pos}º")
-            exc_btn = st.button("❌ EXCLUIR MINHA ASSINATURA", use_container_width=True)
+            exc_btn = st.button("❌ EXCLUIR MINHA PRESENÇA", use_container_width=True)
             if exc_btn:
                 email_logado = str(u.get("Email")).strip().lower()
                 if dados_p and len(dados_p) > 1:
@@ -725,7 +725,7 @@ try:
                             st.rerun()
 
         elif aberto:
-            salvar_btn = st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True)
+            salvar_btn = st.button("🚀 CONFIRMAR MINHA PRESENÇA", use_container_width=True)
             if salvar_btn:
                 agora = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
                 gs_call(sheet_p_escrita.append_row, [
