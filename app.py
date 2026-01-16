@@ -603,7 +603,7 @@ try:
     # PAINEL ADM
     # =========================================
     elif st.session_state.is_admin:
-        st.header("🛡️ PAINEL ADMINISTRATIVO")
+        st.header("🛡️ PAINEL ADMINISTRATIVO 🛡️")
 
         sair_btn = st.button("⬅️ SAIR DO PAINEL")
         if sair_btn:
@@ -682,7 +682,7 @@ try:
         st.sidebar.markdown("### 👤 Usuário Conectado 🙍‍♂️")
         st.sidebar.info(f"**{u.get('Graduação')} {u.get('Nome')}**")
 
-        sair_user = st.sidebar.button("Sair", use_container_width=True)
+        sair_user = st.sidebar.button("⬅️ Sair", use_container_width=True)
         if sair_user:
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
