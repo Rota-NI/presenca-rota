@@ -617,7 +617,7 @@ try:
 
         with t4:
             e_r = st.text_input("E-mail cadastrado:")
-            rec_btn = st.button("👾 RECUPERAR DADOS 🙌", use_container_width=True)
+            rec_btn = st.button("👾 RECUPERAR DADOS 👾", use_container_width=True)
             if rec_btn:
                 u_r = next((u for u in records_u_public if str(u.get("Email", "")).strip().lower() == e_r.strip().lower()), None)
                 if u_r:
