@@ -60,41 +60,6 @@ def tel_is_valid_11(s: str) -> bool:
 
 
 # ==========================================================
-# CICLO (RÓTULO) PARA TOPO + BOTÕES (SEM ALTERAR REGRAS)
-# ==========================================================
-def obter_ciclo_alvo_label():
-    """
-    Regra correta conforme funcionamento do app:
-    - >= 19:00 -> ciclo 06:30 do dia seguinte
-    - < 05:00  -> ciclo 06:30 do mesmo dia
-    - 07:00 a 17:00 -> ciclo 18:30 do mesmo dia
-    - 05:00 a 07:00 (fechado) -> próximo embarque 18:30 do mesmo dia
-    - 17:00 a 19:00 (fechado) -> próximo embarque 06:30 do dia seguinte
-    """
-    agora = datetime.now(FUSO_BR)
-    h = agora.time()
-
-    if h >= time(19, 0):
-        ciclo_hora = "06:30"
-        ciclo_data = (agora + timedelta(days=1)).strftime("%d/%m")
-    elif h < time(5, 0):
-        ciclo_hora = "06:30"
-        ciclo_data = agora.strftime("%d/%m")
-    elif time(7, 0) <= h <= time(17, 0):
-        ciclo_hora = "18:30"
-        ciclo_data = agora.strftime("%d/%m")
-    elif time(5, 0) <= h < time(7, 0):
-        ciclo_hora = "18:30"
-        ciclo_data = agora.strftime("%d/%m")
-    else:
-        # 17:00 <= h < 19:00
-        ciclo_hora = "06:30"
-        ciclo_data = (agora + timedelta(days=1)).strftime("%d/%m")
-
-    return ciclo_hora, ciclo_data
-
-
-# ==========================================================
 # WRAPPER COM RETRY / BACKOFF PARA 429
 # ==========================================================
 def gs_call(func, *args, **kwargs):
@@ -195,7 +160,7 @@ def buscar_presenca_atualizada():
 def filtrar_linhas_presenca(dados_p):
     """
     Mantém somente linhas válidas para exibição/ordenação/conferência:
-    - pelo menos 6 colunas (DATA, QG_RMCF_OUTROS, GRAD, NOME, LOTAÇÃO, EMAIL)
+    - pelo menos 6 colunas (DATA, ORIGEM, GRAD, NOME, LOTAÇÃO, EMAIL)
     - DATA, NOME e EMAIL preenchidos
     """
     if not dados_p or len(dados_p) < 2:
@@ -315,6 +280,7 @@ class PDFRelatorio(FPDF):
         self.set_y(-12)
         self.set_font("Arial", "", 8)
         self.set_text_color(90, 90, 90)
+        # Sem unicode problemático
         self.cell(0, 6, f"Página {self.page_no()}/{{nb}} - Rota Nova Iguaçu", align="C")
 
 
@@ -341,6 +307,8 @@ def gerar_pdf_apresentado(df_o: pd.DataFrame, resumo: dict) -> bytes:
 
     # Tabela com ORIGEM no final (direita)
     headers = ["Nº", "GRADUAÇÃO", "NOME", "LOTAÇÃO", "ORIGEM"]
+
+    # Ajuste para caber em A4: soma ~190mm (margens ok)
     col_w = [12, 26, 78, 55, 19]
 
     pdf.set_font("Arial", "B", 9)
@@ -513,7 +481,7 @@ try:
             * **Manhã:** Inscrições abertas até às 05:00h. Reabre às 07:00h.
             * **Tarde:** Inscrições abertas até às 17:00h. Reabre às 19:00h.
             * **Finais de Semana:** Abrem domingo às 19:00h.
-            
+
             **2. Observação:**
             * Nos períodos em que a lista ficar suspensa para conferência (05:00h às 07:00h / 17:00h às 19:00h), os três PPMM que estiverem no topo da lista terão acesso à lista de check up (botão no topo da lista) para tirar a falta de quem estará entrando no ônibus.
             * Após o horário de 06:50h e de 18:50h, a lista será automaticamente zerada para que o novo ciclo da lista possa ocorrer.
@@ -645,10 +613,6 @@ try:
 
         aberto, janela_conf = verificar_status_e_limpar(sheet_p_escrita, dados_p_show)
 
-        # ✅ SOMENTE EXIBIÇÃO DO CICLO (TOPO DA TELA)
-        ciclo_hora, ciclo_data = obter_ciclo_alvo_label()
-        st.info(f"🕒 CICLO ATUAL: EMBARQUE {ciclo_hora} ({ciclo_data})")
-
         df_o, df_v = pd.DataFrame(), pd.DataFrame()
         ja, pos = False, 999
 
@@ -661,10 +625,7 @@ try:
 
         if ja:
             st.success(f"✅ Presença registrada: {pos}º")
-            exc_btn = st.button(
-                f"❌ EXCLUIR — EMBARQUE",
-                use_container_width=True
-            )
+            exc_btn = st.button("❌ EXCLUIR MINHA ASSINATURA", use_container_width=True)
             if exc_btn:
                 email_logado = str(u.get("Email")).strip().lower()
                 if dados_p and len(dados_p) > 1:
@@ -675,15 +636,27 @@ try:
                             st.rerun()
 
         elif aberto:
-            salvar_btn = st.button(
-                f"🚀 SALVAR — EMBARQUE",
-                use_container_width=True
-            )
+            salvar_btn = st.button("🚀 SALVAR MINHA PRESENÇA", use_container_width=True)
             if salvar_btn:
                 agora = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
+
+                # ==========================================================
+                # ✅ ÚNICA CORREÇÃO PEDIDA:
+                # Gravar a origem usando o campo do Google Sheets: QG_RMCF_OUTROS
+                # (com tolerância caso o header esteja abreviado como "QG_RMCF_OUT")
+                # ==========================================================
+                origem_val = (
+                    (u.get("QG_RMCF_OUTROS") if isinstance(u, dict) else None) or
+                    (u.get("QG_RMCF_OUT") if isinstance(u, dict) else None) or
+                    ""
+                )
+                origem_val = str(origem_val).strip().upper()
+                if origem_val not in ("QG", "RMCF", "OUTROS"):
+                    origem_val = "QG"
+
                 gs_call(sheet_p_escrita.append_row, [
                     agora,
-                    (u.get("QG_RMCF_OUTROS") or "QG"),
+                    origem_val,
                     u.get("Graduação"),
                     u.get("Nome"),
                     u.get("Lotação"),
