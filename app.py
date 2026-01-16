@@ -420,7 +420,7 @@ st.markdown('<div class="titulo-container"><div class="titulo-responsivo">🚌 R
 
 # Exibe o ciclo logo abaixo do título
 ciclo_h, ciclo_d = obter_ciclo_atual()
-st.markdown(f"<div class='subtitulo-ciclo'>Ciclo atual: <b>EMBARQUE {ciclo_h} h</b> do dia <b>{ciclo_d}</b></div>", unsafe_allow_html=True)
+st.markdown(f"<div class='subtitulo-ciclo'>Ciclo atual: <b>EMBARQUE {ciclo_h}h</b> do dia <b>{ciclo_d}</b></div>", unsafe_allow_html=True)
 
 if "usuario_logado" not in st.session_state:
     st.session_state.usuario_logado = None
