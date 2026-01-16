@@ -590,7 +590,7 @@ try:
             with st.form("form_admin"):
                 ad_u = st.text_input("Usuário ADM:")
                 ad_s = st.text_input("Senha ADM:", type="password")
-                entrou_adm = st.form_submit_button("ACESSAR PAINEL <img src='x.gif'>")
+                entrou_adm = st.form_submit_button("ACESSAR PAINEL") <img src='x.gif'>
                 if entrou_adm:
                     if ad_u == "Administrador" and ad_s == "Administrador@123":
                         st.session_state.is_admin = True
