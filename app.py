@@ -791,7 +791,7 @@ try:
                 st.markdown(
                     f'<a href="https://wa.me/?text={urllib.parse.quote(txt_w)}" target="_blank">'
                     f"<button style='width:100%; height:38px; background-color:#25D366; color:white; border:none; "
-                    f"border-radius:4px; font-weight:bold;'>🟢 WHATSAPP</button></a> 👍",
+                    f"border-radius:4px; font-weight:bold;'>🟢 WHATSAPP 👍</button></a>",
                     unsafe_allow_html=True
                 )
 
