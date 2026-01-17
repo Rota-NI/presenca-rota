@@ -576,23 +576,38 @@ try:
 
                         if missing:
                             st.error("Preencha corretamente todos os campos: " + ", ".join(missing) + ".")
-                        elif any(str(u.get("Email", "")).strip().lower() == norm_str(n_e).lower() for u in records_u_public):
-                            st.error("E-mail já cadastrado.")
                         else:
-                            gs_call(sheet_u_escrita.append_row, [
-                                norm_str(n_n),
-                                norm_str(n_g),
-                                norm_str(n_l),
-                                norm_str(n_p),
-                                norm_str(n_o),
-                                norm_str(n_e),
-                                fmt_tel_cad,
-                                "PENDENTE"
-                            ])
-                            buscar_usuarios_cadastrados.clear()
-                            buscar_usuarios_admin.clear()
-                            st.success("Cadastro realizado! Aguardando aprovação do Administrador.")
-                            st.rerun()
+                            # ==========================================================
+                            # BLOQUEAR CADASTRO SE EMAIL OU TELEFONE JÁ EXISTIREM
+                            # (alteração solicitada)
+                            # ==========================================================
+                            novo_email = norm_str(n_e).lower()
+                            novo_tel_digits = tel_only_digits(fmt_tel_cad)
+
+                            email_existe = any(str(u.get("Email", "")).strip().lower() == novo_email for u in records_u_public)
+                            tel_existe = any(tel_only_digits(u.get("TELEFONE", "")) == novo_tel_digits for u in records_u_public)
+
+                            if email_existe and tel_existe:
+                                st.error("E-mail e Telefone já cadastrados.")
+                            elif email_existe:
+                                st.error("E-mail já cadastrado.")
+                            elif tel_existe:
+                                st.error("Telefone já cadastrado.")
+                            else:
+                                gs_call(sheet_u_escrita.append_row, [
+                                    norm_str(n_n),
+                                    norm_str(n_g),
+                                    norm_str(n_l),
+                                    norm_str(n_p),
+                                    norm_str(n_o),
+                                    norm_str(n_e),
+                                    fmt_tel_cad,
+                                    "PENDENTE"
+                                ])
+                                buscar_usuarios_cadastrados.clear()
+                                buscar_usuarios_admin.clear()
+                                st.success("Cadastro realizado! Aguardando aprovação do Administrador.")
+                                st.rerun()
 
         with t3:
             st.markdown("### 📖 Guia de Uso")
@@ -779,6 +794,15 @@ try:
                 st.rerun()
         else:
             st.info("⌛ Lista fechada para novas inscrições.")
+
+            # ==========================================================
+            # ATUALIZAR DISPONÍVEL MESMO COM LISTA FECHADA
+            # (alteração solicitada)
+            # ==========================================================
+            up_btn_fechado = st.button("🔄 ATUALIZAR", use_container_width=True)
+            if up_btn_fechado:
+                buscar_presenca_atualizada.clear()
+                st.rerun()
 
         # CONFERÊNCIA
         if ja and pos <= 3 and janela_conf:
