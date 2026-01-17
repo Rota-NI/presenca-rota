@@ -134,7 +134,7 @@ def buscar_usuarios_cadastrados():
 
 @st.cache_data(ttl=3)
 def buscar_usuarios_admin():
-    """Uso específico do ADM: mais fresco."""
+    """Uso específico do ADM: Atualiza tudo."""
     try:
         sheet_u = ws_usuarios()
         return gs_call(sheet_u.get_all_records)
@@ -678,7 +678,7 @@ try:
                 buscar_usuarios_admin.clear()
                 st.rerun()
         with cB:
-            st.caption("ADM lê mais fresco (TTL=3s).")
+            st.caption("Atualiza tudo (3s).")
 
         st.subheader("⚙️ Configurações Globais")
         novo_limite = st.number_input("Limite máximo de usuários:", value=int(limite_max))
