@@ -41,7 +41,7 @@ GIF_URL = "https://www.imagensanimadas.com/data/media/425/onibus-imagem-animada-
 # ==========================================================
 def _get_email_cfg():
     """
-    Espera no secrets:
+    Esperado no secrets:
     [email]
     smtp_host = "smtp.gmail.com"
     smtp_port = 587
@@ -147,7 +147,10 @@ def gs_call(func, *args, **kwargs):
 # ==========================================================
 @st.cache_resource
 def conectar_gsheets():
-    info = st.secrets["gcp_service_account"]
+    info = dict(st.secrets["gcp_service_account"])
+    # Correção para leitura de chaves privadas em sistemas cloud
+    if "private_key" in info:
+        info["private_key"] = info["private_key"].replace("\\n", "\n")
     creds = Credentials.from_service_account_info(info, scopes=scope)
     return gspread.authorize(creds)
 
@@ -274,6 +277,7 @@ def verificar_status_e_limpar(sheet_p, dados_p):
 
     is_aberto = False
 
+    # Regras de abertura/fechamento
     if dia_semana == 5:  # Sábado
         is_aberto = False
     elif dia_semana == 6:  # Domingo
@@ -660,7 +664,6 @@ try:
             e_r = st.text_input("E-mail cadastrado:")
             rec_btn = st.button("👾 ENVIAR DADOS POR E-MAIL 👾", use_container_width=True)
             if rec_btn:
-                # Busca ignorando case do e-mail
                 u_r = next((u for u in records_u_public if str(u.get("Email", "")).strip().lower() == e_r.strip().lower()), None)
                 if u_r:
                     assunto = "Recuperação de acesso - Rota Nova Iguaçu"
@@ -672,7 +675,6 @@ try:
                         f"Senha: {u_r.get('Senha')}\n\n"
                         "Se você NÃO solicitou isso, ignore este e-mail."
                     )
-                    # Envia o e-mail usando a função configurada
                     ok, msg = enviar_email(str(u_r.get("Email", "")).strip(), assunto, corpo)
                     if ok:
                         st.success("✅ Enviado para o seu e-mail cadastrado.")
