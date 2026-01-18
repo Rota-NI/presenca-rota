@@ -274,11 +274,6 @@ def verificar_status_e_limpar(sheet_p, dados_p):
 
     is_aberto = False
 
-    # Regras de abertura/fechamento:
-    # - SEG a QUI: fecha apenas nas janelas 05:00-07:00 e 17:00-19:00
-    # - SEX: fecha às 17:00 e só reabre DOM às 19:00 (portanto SEX após 17:00 fica fechado)
-    # - SÁB: fechado o dia todo
-    # - DOM: abre a partir de 19:00
     if dia_semana == 5:  # Sábado
         is_aberto = False
     elif dia_semana == 6:  # Domingo
@@ -304,20 +299,6 @@ def verificar_status_e_limpar(sheet_p, dados_p):
 # CICLO (exibição abaixo do título)
 # ==========================================================
 def obter_ciclo_atual():
-    """
-    Regras do ciclo (texto informativo):
-    - SEG a QUI:
-        * Se agora >= 19:00 -> inscrições são para 06:30 de amanhã
-        * Se agora < 07:00  -> inscrições são para 06:30 de hoje
-        * Se 07:00 <= agora < 19:00 -> inscrições são para 18:30 de hoje
-    - SEX:
-        * Até 16:59 segue regra normal acima
-        * A partir de 17:00 fecha e o próximo ciclo será 06:30 de SEGUNDA
-    - SÁB: fechado; próximo ciclo será 06:30 de SEGUNDA
-    - DOM:
-        * Antes de 19:00 fechado; próximo ciclo será 06:30 de SEGUNDA
-        * A partir de 19:00 aberto; inscrições são para 06:30 de amanhã (SEGUNDA)
-    """
     agora = datetime.now(FUSO_BR)
     t = agora.time()
     wd = agora.weekday()
@@ -634,7 +615,6 @@ try:
                                     "PENDENTE"
                                 ])
 
-                                # opcional: notificar admin por e-mail (se configurado)
                                 cfg = _get_email_cfg()
                                 if cfg and cfg.get("admin_to"):
                                     assunto = "Novo cadastro pendente - Rota Nova Iguaçu"
@@ -680,6 +660,7 @@ try:
             e_r = st.text_input("E-mail cadastrado:")
             rec_btn = st.button("👾 ENVIAR DADOS POR E-MAIL 👾", use_container_width=True)
             if rec_btn:
+                # Busca ignorando case do e-mail
                 u_r = next((u for u in records_u_public if str(u.get("Email", "")).strip().lower() == e_r.strip().lower()), None)
                 if u_r:
                     assunto = "Recuperação de acesso - Rota Nova Iguaçu"
@@ -691,6 +672,7 @@ try:
                         f"Senha: {u_r.get('Senha')}\n\n"
                         "Se você NÃO solicitou isso, ignore este e-mail."
                     )
+                    # Envia o e-mail usando a função configurada
                     ok, msg = enviar_email(str(u_r.get("Email", "")).strip(), assunto, corpo)
                     if ok:
                         st.success("✅ Enviado para o seu e-mail cadastrado.")
